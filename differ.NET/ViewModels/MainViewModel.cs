@@ -1,9 +1,12 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using differ.NET.Models;
@@ -91,10 +94,11 @@ public partial class MainViewModel : ViewModelBase
     private async Task LoadImagesFromFolderAsync(string folderPath)
     {
         IsLoading = true;
-        StatusText = "Loading images...";
+        StatusText = "Scanning folder...";
         Images.Clear();
         SimilarImages.Clear();
         SourceImage = null;
+        ImageLoaderService.ClearCache();
 
         try
         {
@@ -102,21 +106,82 @@ public partial class MainViewModel : ViewModelBase
             TotalImages = imageFiles.Length;
             ProcessedImages = 0;
 
-            foreach (var filePath in imageFiles)
+            if (TotalImages == 0)
             {
-                var imageItem = new ImageItem(filePath);
-                
-                // Load thumbnail asynchronously
-                imageItem.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(filePath, 150);
-                
-                // Compute perceptual hash
-                imageItem.PerceptualHash = await Task.Run(() => 
-                    ImageSimilarityService.ComputePerceptualHash(filePath));
-
-                Images.Add(imageItem);
-                ProcessedImages++;
-                StatusText = $"Loaded {ProcessedImages}/{TotalImages} images";
+                StatusText = "No images found in folder.";
+                return;
             }
+
+            StatusText = $"Found {TotalImages} images. Processing with {Environment.ProcessorCount} cores...";
+
+            // 使用并行处理计算哈希值
+            var processedItems = new ConcurrentBag<ImageItem>();
+            var processedCount = 0;
+
+            await Task.Run(() =>
+            {
+                Parallel.ForEach(imageFiles, 
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                    filePath =>
+                    {
+                        try
+                        {
+                            var imageItem = new ImageItem(filePath);
+                            
+                            // 计算感知哈希（这是最耗时的操作）
+                            imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
+                            
+                            processedItems.Add(imageItem);
+                            
+                            var count = Interlocked.Increment(ref processedCount);
+                            if (count % 10 == 0 || count == TotalImages)
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    ProcessedImages = count;
+                                    StatusText = $"Computed hash: {count}/{TotalImages} images";
+                                });
+                            }
+                        }
+                        catch
+                        {
+                            // 跳过无法处理的图片
+                        }
+                    });
+            });
+
+            // 按文件名排序并添加到集合
+            var sortedItems = processedItems.OrderBy(x => x.FileName).ToList();
+            
+            StatusText = "Loading thumbnails...";
+            ProcessedImages = 0;
+
+            // 批量加载缩略图（使用信号量限制并发）
+            var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
+            var thumbnailTasks = sortedItems.Select(async item =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    item.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(item.FilePath, 150);
+                    
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        Images.Add(item);
+                        ProcessedImages = Images.Count;
+                        if (Images.Count % 20 == 0 || Images.Count == sortedItems.Count)
+                        {
+                            StatusText = $"Loading thumbnails: {Images.Count}/{sortedItems.Count}";
+                        }
+                    });
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }).ToArray();
+
+            await Task.WhenAll(thumbnailTasks);
 
             StatusText = $"Loaded {Images.Count} images. Right-click to set as search source.";
         }
@@ -157,26 +222,80 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         IsLoading = true;
-        StatusText = "Loading compare folder images...";
+        StatusText = "Scanning compare folder...";
         CompareImages.Clear();
 
         try
         {
             var imageFiles = ImageLoaderService.GetImagesInFolder(CompareFolder, CompareIncludeSubfolders);
             var total = imageFiles.Length;
-            var processed = 0;
 
-            foreach (var filePath in imageFiles)
+            if (total == 0)
             {
-                var imageItem = new ImageItem(filePath);
-                imageItem.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(filePath, 150);
-                imageItem.PerceptualHash = await Task.Run(() => 
-                    ImageSimilarityService.ComputePerceptualHash(filePath));
-
-                CompareImages.Add(imageItem);
-                processed++;
-                StatusText = $"Loading compare folder: {processed}/{total} images";
+                StatusText = "No images found in compare folder.";
+                return;
             }
+
+            StatusText = $"Found {total} images. Processing with {Environment.ProcessorCount} cores...";
+
+            // 使用并行处理计算哈希值
+            var processedItems = new ConcurrentBag<ImageItem>();
+            var processedCount = 0;
+
+            await Task.Run(() =>
+            {
+                Parallel.ForEach(imageFiles, 
+                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                    filePath =>
+                    {
+                        try
+                        {
+                            var imageItem = new ImageItem(filePath);
+                            imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
+                            processedItems.Add(imageItem);
+                            
+                            var count = Interlocked.Increment(ref processedCount);
+                            if (count % 10 == 0 || count == total)
+                            {
+                                Dispatcher.UIThread.Post(() =>
+                                {
+                                    StatusText = $"Computing hash: {count}/{total} images";
+                                });
+                            }
+                        }
+                        catch { }
+                    });
+            });
+
+            // 按文件名排序并添加到集合
+            var sortedItems = processedItems.OrderBy(x => x.FileName).ToList();
+            
+            StatusText = "Loading thumbnails...";
+
+            // 批量加载缩略图
+            var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
+            var thumbnailTasks = sortedItems.Select(async item =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    item.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(item.FilePath, 150);
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        CompareImages.Add(item);
+                        if (CompareImages.Count % 20 == 0 || CompareImages.Count == sortedItems.Count)
+                        {
+                            StatusText = $"Loading thumbnails: {CompareImages.Count}/{sortedItems.Count}";
+                        }
+                    });
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }).ToArray();
+
+            await Task.WhenAll(thumbnailTasks);
 
             StatusText = $"Compare folder loaded with {CompareImages.Count} images.";
         }

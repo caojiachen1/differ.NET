@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Media.Imaging;
@@ -15,6 +18,9 @@ namespace differ.NET.Services;
 public static class ImageLoaderService
 {
     private static readonly string[] SupportedExtensions = { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".webp" };
+    
+    // 缩略图缓存
+    private static readonly ConcurrentDictionary<string, Bitmap> ThumbnailCache = new();
 
     /// <summary>
     /// 检查文件是否为支持的图片格式
@@ -26,20 +32,34 @@ public static class ImageLoaderService
     }
 
     /// <summary>
-    /// 异步加载缩略图
+    /// 清除缩略图缓存
+    /// </summary>
+    public static void ClearCache()
+    {
+        ThumbnailCache.Clear();
+    }
+
+    /// <summary>
+    /// 异步加载缩略图（带缓存）
     /// </summary>
     public static async Task<Bitmap?> LoadThumbnailAsync(string filePath, int maxSize = 200)
     {
+        // 检查缓存
+        if (ThumbnailCache.TryGetValue(filePath, out var cached))
+        {
+            return cached;
+        }
+
         try
         {
-            return await Task.Run(() =>
+            var bitmap = await Task.Run(() =>
             {
                 using var image = SixLabors.ImageSharp.Image.Load(filePath);
                 
                 // 计算缩放比例
                 double scale = Math.Min((double)maxSize / image.Width, (double)maxSize / image.Height);
-                int newWidth = (int)(image.Width * scale);
-                int newHeight = (int)(image.Height * scale);
+                int newWidth = Math.Max(1, (int)(image.Width * scale));
+                int newHeight = Math.Max(1, (int)(image.Height * scale));
 
                 image.Mutate(x => x.Resize(newWidth, newHeight));
 
@@ -49,6 +69,12 @@ public static class ImageLoaderService
 
                 return new Bitmap(ms);
             });
+
+            if (bitmap != null)
+            {
+                ThumbnailCache.TryAdd(filePath, bitmap);
+            }
+            return bitmap;
         }
         catch
         {
