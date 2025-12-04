@@ -44,6 +44,18 @@ public partial class MainViewModel : ViewModelBase
     private bool _includeSubfolders = true;
 
     [ObservableProperty]
+    private string _compareFolder = string.Empty;
+
+    [ObservableProperty]
+    private bool _useCompareFolder;
+
+    [ObservableProperty]
+    private bool _compareIncludeSubfolders = true;
+
+    [ObservableProperty]
+    private ObservableCollection<ImageItem> _compareImages = new();
+
+    [ObservableProperty]
     private int _totalImages;
 
     [ObservableProperty]
@@ -119,6 +131,78 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task SelectCompareFolderAsync()
+    {
+        if (_storageProvider == null)
+            return;
+
+        var folders = await _storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select Compare Folder",
+            AllowMultiple = false
+        });
+
+        if (folders.Count > 0)
+        {
+            var folder = folders[0];
+            CompareFolder = folder.Path.LocalPath;
+            UseCompareFolder = true;
+            await LoadCompareImagesAsync();
+        }
+    }
+
+    private async Task LoadCompareImagesAsync()
+    {
+        if (string.IsNullOrEmpty(CompareFolder))
+            return;
+
+        IsLoading = true;
+        StatusText = "Loading compare folder images...";
+        CompareImages.Clear();
+
+        try
+        {
+            var imageFiles = ImageLoaderService.GetImagesInFolder(CompareFolder, CompareIncludeSubfolders);
+            var total = imageFiles.Length;
+            var processed = 0;
+
+            foreach (var filePath in imageFiles)
+            {
+                var imageItem = new ImageItem(filePath);
+                imageItem.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(filePath, 150);
+                imageItem.PerceptualHash = await Task.Run(() => 
+                    ImageSimilarityService.ComputePerceptualHash(filePath));
+
+                CompareImages.Add(imageItem);
+                processed++;
+                StatusText = $"Loading compare folder: {processed}/{total} images";
+            }
+
+            StatusText = $"Compare folder loaded with {CompareImages.Count} images.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Error loading compare folder: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private void ClearCompareFolder()
+    {
+        CompareFolder = string.Empty;
+        UseCompareFolder = false;
+        CompareImages.Clear();
+        SimilarImages.Clear();
+        StatusText = Images.Count > 0 
+            ? $"Loaded {Images.Count} images. Right-click to set as search source."
+            : "Select a folder to browse images";
+    }
+
+    [RelayCommand]
     private async Task SetAsSourceAsync(ImageItem? image)
     {
         if (image == null)
@@ -147,7 +231,12 @@ public partial class MainViewModel : ViewModelBase
             {
                 var sourceHash = SourceImage.PerceptualHash;
 
-                var similar = Images
+                // 根据是否使用对比文件夹选择搜索范围
+                var searchCollection = UseCompareFolder && CompareImages.Count > 0 
+                    ? CompareImages 
+                    : Images;
+
+                var similar = searchCollection
                     .Where(img => img.FilePath != SourceImage.FilePath)
                     .Select(img =>
                     {
@@ -167,7 +256,8 @@ public partial class MainViewModel : ViewModelBase
                 });
             });
 
-            StatusText = $"Found {SimilarImages.Count} similar images (similarity >= {SimilarityThreshold:F0}%)";
+            var searchScope = UseCompareFolder && CompareImages.Count > 0 ? "compare folder" : "library";
+            StatusText = $"Found {SimilarImages.Count} similar images in {searchScope} (similarity >= {SimilarityThreshold:F0}%)";
         }
         catch (Exception ex)
         {
