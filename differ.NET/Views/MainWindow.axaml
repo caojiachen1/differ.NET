@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:differ.NET.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:differ.NET.Views"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="differ.NET.Views.MainWindow"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Image Similarity Finder - differ.NET"
+        Width="1200" Height="800"
+        MinWidth="900" MinHeight="600">
+        <views:MainView />
+</Window>

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Project Path="differ.NET.Android/differ.NET.Android.csproj" />
+  <Project Path="differ.NET.Browser/differ.NET.Browser.csproj" />
+  <Project Path="differ.NET.Desktop/differ.NET.Desktop.csproj" />
+  <Project Path="differ.NET.iOS/differ.NET.iOS.csproj" />
+  <Project Path="differ.NET/differ.NET.csproj" />
+</Solution>
