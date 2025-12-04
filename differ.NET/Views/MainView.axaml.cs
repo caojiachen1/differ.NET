@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using differ.NET.Models;
@@ -31,9 +33,18 @@ public partial class MainView : UserControl
         // 处理右键点击显示菜单
         if (e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
         {
-            if (sender is Border border && border.ContextFlyout is MenuFlyout flyout)
+            if (sender is Control control && control.ContextFlyout is Flyout flyout)
             {
-                flyout.ShowAt(border);
+                // 获取鼠标相对于控件的位置，在鼠标位置显示菜单
+                var position = e.GetPosition(control);
+                flyout.Placement = PlacementMode.Pointer;
+                flyout.ShowAt(control);
+                e.Handled = true;
+            }
+            else if (sender is Control ctrl && ctrl.ContextFlyout is MenuFlyout menuFlyout)
+            {
+                menuFlyout.Placement = PlacementMode.Pointer;
+                menuFlyout.ShowAt(ctrl);
                 e.Handled = true;
             }
         }
