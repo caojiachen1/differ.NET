@@ -8,10 +8,10 @@ using SixLabors.ImageSharp.Processing;
 namespace differ.NET.Services;
 
 /// <summary>
-/// 图片相似度计算服务，使用感知哈希算法(pHash)
-/// 已优化：预计算余弦值、使用SIMD加速汉明距离计算
+/// 图片相似度计算服务
+/// 主要使用 DINOv3 深度学习模型，感知哈希算法(pHash)作为失败回退
 /// </summary>
-public class ImageSimilarityService
+public class ImageSimilarityService : IDisposable
 {
     private const int HashSize = 8;
     private const int HighFreqFactor = 4;
@@ -21,6 +21,13 @@ public class ImageSimilarityService
     private static readonly float[,] CosTable;
     private static readonly float C1;
     private static readonly float C2;
+
+    // DINOv3 特征提取器（单例）
+    private static readonly Lazy<DinoV3FeatureExtractor> _dinoExtractor = 
+        new(() => new DinoV3FeatureExtractor(), isThreadSafe: true);
+
+    private static bool _dinoInitialized;
+    private static readonly object _initLock = new();
 
     static ImageSimilarityService()
     {
@@ -38,7 +45,76 @@ public class ImageSimilarityService
     }
 
     /// <summary>
-    /// 计算图片的感知哈希值（优化版）
+    /// 获取 DINOv3 提取器实例
+    /// </summary>
+    public static DinoV3FeatureExtractor DinoExtractor => _dinoExtractor.Value;
+
+    /// <summary>
+    /// 初始化 DINOv3 模型
+    /// </summary>
+    /// <param name="modelPath">可选的模型路径</param>
+    /// <returns>是否初始化成功</returns>
+    public static bool InitializeDino(string? modelPath = null)
+    {
+        if (_dinoInitialized)
+            return _dinoExtractor.Value.IsInitialized;
+
+        lock (_initLock)
+        {
+            if (_dinoInitialized)
+                return _dinoExtractor.Value.IsInitialized;
+
+            _dinoInitialized = true;
+            return _dinoExtractor.Value.Initialize(modelPath);
+        }
+    }
+
+    /// <summary>
+    /// 检查 DINOv3 是否可用
+    /// </summary>
+    public static bool IsDinoAvailable => _dinoExtractor.IsValueCreated && _dinoExtractor.Value.IsInitialized;
+
+    /// <summary>
+    /// 提取 DINOv3 特征向量
+    /// </summary>
+    /// <param name="imagePath">图片路径</param>
+    /// <returns>特征向量，失败返回 null</returns>
+    public static float[]? ExtractDinoFeatures(string imagePath)
+    {
+        if (!IsDinoAvailable)
+        {
+            InitializeDino();
+        }
+
+        if (!IsDinoAvailable)
+            return null;
+
+        return _dinoExtractor.Value.ExtractFeatures(imagePath);
+    }
+
+    /// <summary>
+    /// 计算两个图片的相似度 - 优先使用 DINOv3，失败时回退到 pHash
+    /// </summary>
+    /// <param name="features1">图片1的 DINO 特征</param>
+    /// <param name="features2">图片2的 DINO 特征</param>
+    /// <param name="hash1">图片1的感知哈希（回退用）</param>
+    /// <param name="hash2">图片2的感知哈希（回退用）</param>
+    /// <returns>相似度 (0-100)</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static double CalculateSimilarity(float[]? features1, float[]? features2, ulong hash1, ulong hash2)
+    {
+        // 优先使用 DINOv3 特征
+        if (features1 != null && features2 != null && features1.Length == features2.Length)
+        {
+            return DinoV3FeatureExtractor.CalculateCosineSimilarity(features1, features2);
+        }
+
+        // 回退到 pHash
+        return CalculateSimilarity(hash1, hash2);
+    }
+
+    /// <summary>
+    /// 计算图片的感知哈希值（优化版）- 作为失败回退
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static ulong ComputePerceptualHash(string imagePath)
@@ -128,7 +204,7 @@ public class ImageSimilarityService
     }
 
     /// <summary>
-    /// 计算两个图片的相似度(0-100%)
+    /// 计算两个图片的相似度(0-100%) - 基于 pHash
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static double CalculateSimilarity(ulong hash1, ulong hash2)
@@ -136,5 +212,13 @@ public class ImageSimilarityService
         int distance = HammingDistance(hash1, hash2);
         // 64位哈希，距离最大为64
         return (1.0 - distance / 64.0) * 100;
+    }
+
+    public void Dispose()
+    {
+        if (_dinoExtractor.IsValueCreated)
+        {
+            _dinoExtractor.Value.Dispose();
+        }
     }
 }

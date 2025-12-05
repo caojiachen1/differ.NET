@@ -17,6 +17,8 @@
     <!-- FluentAvalonia for Fluent Design -->
     <PackageVersion Include="FluentAvaloniaUI" Version="2.2.0" />
     <!-- Image processing -->
+    <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
+    <PackageVersion Include="Microsoft.ML.OnnxRuntime.Gpu" Version="1.23.2" />
     <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageVersion Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.15" />

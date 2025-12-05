@@ -226,18 +226,18 @@
                     CornerRadius="6"
                     ClipToBounds="True"
                     Background="{DynamicResource LayerFillColorDefaultBrush}">
-              <Image Source="{Binding SourceImage.Thumbnail}" Stretch="Uniform"/>
+              <Image Source="{Binding SourceImage.Thumbnail, FallbackValue={x:Null}}" Stretch="Uniform"/>
             </Border>
             <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="4">
               <TextBlock Text="Search Source" FontWeight="SemiBold" FontSize="14"/>
-              <TextBlock Text="{Binding SourceImage.FileName}" 
+              <TextBlock Text="{Binding SourceImage.FileName, FallbackValue=''}" 
                          TextTrimming="CharacterEllipsis"
                          Opacity="0.7"/>
-              <TextBlock Text="{Binding SourceImage.FilePath}" 
+              <TextBlock Text="{Binding SourceImage.FilePath, FallbackValue=''}" 
                          TextTrimming="CharacterEllipsis"
                          FontSize="11"
                          Opacity="0.5"
-                         ToolTip.Tip="{Binding SourceImage.FilePath}"/>
+                         ToolTip.Tip="{Binding SourceImage.FilePath, FallbackValue={x:Null}}"/>
             </StackPanel>
           </Grid>
         </Border>

@@ -23,6 +23,16 @@ public partial class ImageItem : ObservableObject
     [ObservableProperty]
     private ulong _perceptualHash;
 
+    /// <summary>
+    /// DINOv3 特征向量，用于深度学习相似度计算
+    /// </summary>
+    public float[]? DinoFeatures { get; set; }
+
+    /// <summary>
+    /// 是否有有效的 DINOv3 特征
+    /// </summary>
+    public bool HasDinoFeatures => DinoFeatures != null && DinoFeatures.Length > 0;
+
     public ImageItem(string filePath)
     {
         FilePath = filePath;

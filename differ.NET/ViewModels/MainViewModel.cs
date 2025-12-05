@@ -64,7 +64,35 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private int _processedImages;
 
+    [ObservableProperty]
+    private bool _useDinoModel = true;
+
+    [ObservableProperty]
+    private bool _isDinoAvailable;
+
     private IStorageProvider? _storageProvider;
+
+    public MainViewModel()
+    {
+        // 异步初始化 DINOv3 模型
+        Task.Run(() =>
+        {
+            var success = ImageSimilarityService.InitializeDino();
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsDinoAvailable = success;
+                if (success)
+                {
+                    StatusText = "DINOv3 model loaded. Select a folder to browse images.";
+                }
+                else
+                {
+                    StatusText = "DINOv3 unavailable, using pHash fallback. Select a folder to browse images.";
+                    UseDinoModel = false;
+                }
+            });
+        });
+    }
 
     public void SetStorageProvider(IStorageProvider provider)
     {
@@ -112,34 +140,41 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            StatusText = $"Found {TotalImages} images. Processing with {Environment.ProcessorCount} cores...";
+            var useDino = UseDinoModel && IsDinoAvailable;
+            var algorithmName = useDino ? "DINOv3" : "pHash";
+            StatusText = $"Found {TotalImages} images. Processing with {algorithmName} using {Environment.ProcessorCount} cores...";
 
-            // 使用并行处理计算哈希值
+            // 使用并行处理计算特征
             var processedItems = new ConcurrentBag<ImageItem>();
             var processedCount = 0;
 
             await Task.Run(() =>
             {
-                Parallel.ForEach(imageFiles, 
-                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    filePath =>
+                // DINOv3 需要串行处理（模型推理通常不支持并行）
+                // pHash 可以并行处理
+                if (useDino)
+                {
+                    foreach (var filePath in imageFiles)
                     {
                         try
                         {
                             var imageItem = new ImageItem(filePath);
                             
-                            // 计算感知哈希（这是最耗时的操作）
+                            // 提取 DINOv3 特征
+                            imageItem.DinoFeatures = ImageSimilarityService.ExtractDinoFeatures(filePath);
+                            
+                            // 同时计算 pHash 作为回退
                             imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
                             
                             processedItems.Add(imageItem);
                             
                             var count = Interlocked.Increment(ref processedCount);
-                            if (count % 10 == 0 || count == TotalImages)
+                            if (count % 5 == 0 || count == TotalImages)
                             {
                                 Dispatcher.UIThread.Post(() =>
                                 {
                                     ProcessedImages = count;
-                                    StatusText = $"Computed hash: {count}/{TotalImages} images";
+                                    StatusText = $"Extracting DINOv3 features: {count}/{TotalImages} images";
                                 });
                             }
                         }
@@ -147,7 +182,39 @@ public partial class MainViewModel : ViewModelBase
                         {
                             // 跳过无法处理的图片
                         }
-                    });
+                    }
+                }
+                else
+                {
+                    Parallel.ForEach(imageFiles, 
+                        new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                        filePath =>
+                        {
+                            try
+                            {
+                                var imageItem = new ImageItem(filePath);
+                                
+                                // 计算感知哈希
+                                imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
+                                
+                                processedItems.Add(imageItem);
+                                
+                                var count = Interlocked.Increment(ref processedCount);
+                                if (count % 10 == 0 || count == TotalImages)
+                                {
+                                    Dispatcher.UIThread.Post(() =>
+                                    {
+                                        ProcessedImages = count;
+                                        StatusText = $"Computed pHash: {count}/{TotalImages} images";
+                                    });
+                                }
+                            }
+                            catch
+                            {
+                                // 跳过无法处理的图片
+                            }
+                        });
+                }
             });
 
             // 按文件名排序并添加到集合
@@ -236,35 +303,63 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            StatusText = $"Found {total} images. Processing with {Environment.ProcessorCount} cores...";
+            var useDino = UseDinoModel && IsDinoAvailable;
+            var algorithmName = useDino ? "DINOv3" : "pHash";
+            StatusText = $"Found {total} images. Processing with {algorithmName} using {Environment.ProcessorCount} cores...";
 
-            // 使用并行处理计算哈希值
+            // 使用并行处理计算特征
             var processedItems = new ConcurrentBag<ImageItem>();
             var processedCount = 0;
 
             await Task.Run(() =>
             {
-                Parallel.ForEach(imageFiles, 
-                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                    filePath =>
+                if (useDino)
+                {
+                    foreach (var filePath in imageFiles)
                     {
                         try
                         {
                             var imageItem = new ImageItem(filePath);
+                            imageItem.DinoFeatures = ImageSimilarityService.ExtractDinoFeatures(filePath);
                             imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
                             processedItems.Add(imageItem);
                             
                             var count = Interlocked.Increment(ref processedCount);
-                            if (count % 10 == 0 || count == total)
+                            if (count % 5 == 0 || count == total)
                             {
                                 Dispatcher.UIThread.Post(() =>
                                 {
-                                    StatusText = $"Computing hash: {count}/{total} images";
+                                    StatusText = $"Extracting DINOv3 features: {count}/{total} images";
                                 });
                             }
                         }
                         catch { }
-                    });
+                    }
+                }
+                else
+                {
+                    Parallel.ForEach(imageFiles, 
+                        new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+                        filePath =>
+                        {
+                            try
+                            {
+                                var imageItem = new ImageItem(filePath);
+                                imageItem.PerceptualHash = ImageSimilarityService.ComputePerceptualHash(filePath);
+                                processedItems.Add(imageItem);
+                                
+                                var count = Interlocked.Increment(ref processedCount);
+                                if (count % 10 == 0 || count == total)
+                                {
+                                    Dispatcher.UIThread.Post(() =>
+                                    {
+                                        StatusText = $"Computing pHash: {count}/{total} images";
+                                    });
+                                }
+                            }
+                            catch { }
+                        });
+                }
             });
 
             // 按文件名排序并添加到集合
@@ -349,6 +444,8 @@ public partial class MainViewModel : ViewModelBase
             await Task.Run(() =>
             {
                 var sourceHash = SourceImage.PerceptualHash;
+                var sourceFeatures = SourceImage.DinoFeatures;
+                var useDino = UseDinoModel && IsDinoAvailable && sourceFeatures != null;
 
                 // 根据是否使用对比文件夹选择搜索范围
                 var searchCollection = UseCompareFolder && CompareImages.Count > 0 
@@ -359,7 +456,16 @@ public partial class MainViewModel : ViewModelBase
                     .Where(img => img.FilePath != SourceImage.FilePath)
                     .Select(img =>
                     {
-                        img.Similarity = ImageSimilarityService.CalculateSimilarity(sourceHash, img.PerceptualHash);
+                        // 优先使用 DINOv3，回退到 pHash
+                        if (useDino && img.HasDinoFeatures)
+                        {
+                            img.Similarity = ImageSimilarityService.CalculateSimilarity(
+                                sourceFeatures, img.DinoFeatures, sourceHash, img.PerceptualHash);
+                        }
+                        else
+                        {
+                            img.Similarity = ImageSimilarityService.CalculateSimilarity(sourceHash, img.PerceptualHash);
+                        }
                         return img;
                     })
                     .Where(img => img.Similarity >= SimilarityThreshold)
@@ -376,7 +482,8 @@ public partial class MainViewModel : ViewModelBase
             });
 
             var searchScope = UseCompareFolder && CompareImages.Count > 0 ? "compare folder" : "library";
-            StatusText = $"Found {SimilarImages.Count} similar images in {searchScope} (similarity >= {SimilarityThreshold:F0}%)";
+            var algorithmName = UseDinoModel && IsDinoAvailable && SourceImage.HasDinoFeatures ? "DINOv3" : "pHash";
+            StatusText = $"Found {SimilarImages.Count} similar images in {searchScope} using {algorithmName} (similarity >= {SimilarityThreshold:F0}%)";
         }
         catch (Exception ex)
         {
