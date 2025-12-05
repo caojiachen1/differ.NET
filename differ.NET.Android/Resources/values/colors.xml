@@ -1,4 +1,40 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-  <color name="splash_background">#FFFFFF</color>
+  <!-- 应用主题颜色 -->
+  <color name="colorPrimary">#2196F3</color>
+  <color name="colorPrimaryDark">#1976D2</color>
+  <color name="colorAccent">#FF4081</color>
+  
+  <!-- 背景颜色 -->
+  <color name="window_background">#FAFAFA</color>
+  <color name="card_background">#FFFFFF</color>
+  <color name="card_background_secondary">#F5F5F5</color>
+  
+  <!-- 文字颜色 -->
+  <color name="text_primary">#212121</color>
+  <color name="text_secondary">#757575</color>
+  <color name="text_hint">#BDBDBD</color>
+  
+  <!-- 边框和分割线 -->
+  <color name="divider">#E0E0E0</color>
+  <color name="card_stroke">#E0E0E0</color>
+  
+  <!-- 状态颜色 -->
+  <color name="status_loading">#2196F3</color>
+  <color name="status_success">#4CAF50</color>
+  <color name="status_error">#F44336</color>
+  <color name="status_warning">#FF9800</color>
+  
+  <!-- 按钮颜色 -->
+  <color name="button_primary">#2196F3</color>
+  <color name="button_primary_pressed">#1976D2</color>
+  <color name="button_secondary">#757575</color>
+  
+  <!-- 半透明颜色 -->
+  <color name="black_overlay">#80000000</color>
+  <color name="white_overlay">#80FFFFFF</color>
+  
+  <!-- 白色 -->
+  <color name="white">#FFFFFF</color>
+  <color name="black">#000000</color>
 </resources>

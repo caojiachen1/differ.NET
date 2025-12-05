@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 默认屏幕尺寸的尺寸资源 -->
+  
+  <!-- 间距 -->
+  <dimen name="margin_small">4dp</dimen>
+  <dimen name="margin_medium">8dp</dimen>
+  <dimen name="margin_large">12dp</dimen>
+  <dimen name="margin_xlarge">16dp</dimen>
+  <dimen name="margin_xxlarge">24dp</dimen>
+  
+  <!-- 内边距 -->
+  <dimen name="padding_small">4dp</dimen>
+  <dimen name="padding_medium">8dp</dimen>
+  <dimen name="padding_large">12dp</dimen>
+  <dimen name="padding_xlarge">16dp</dimen>
+  <dimen name="padding_xxlarge">24dp</dimen>
+  
+  <!-- 图片网格项尺寸 -->
+  <dimen name="image_grid_item_width">90dp</dimen>
+  <dimen name="image_grid_item_height">110dp</dimen>
+  <dimen name="image_grid_thumbnail_height">75dp</dimen>
+  
+  <!-- 卡片尺寸 -->
+  <dimen name="card_corner_radius">8dp</dimen>
+  <dimen name="card_elevation">4dp</dimen>
+  
+  <!-- 按钮尺寸 -->
+  <dimen name="button_height">40dp</dimen>
+  <dimen name="button_min_width">64dp</dimen>
+  <dimen name="button_padding_horizontal">16dp</dimen>
+  
+  <!-- 文字大小 -->
+  <dimen name="text_size_small">10sp</dimen>
+  <dimen name="text_size_medium">12sp</dimen>
+  <dimen name="text_size_large">14sp</dimen>
+  <dimen name="text_size_xlarge">16sp</dimen>
+  <dimen name="text_size_xxlarge">20sp</dimen>
+  
+  <!-- 工具栏 -->
+  <dimen name="toolbar_height">56dp</dimen>
+  <dimen name="toolbar_padding">16dp</dimen>
+  
+  <!-- 状态栏 -->
+  <dimen name="status_bar_height">24dp</dimen>
+</resources>

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">differ.NET</string>
+  <string name="select_folder">Select Folder</string>
+  <string name="include_subfolders">Include Subfolders</string>
+  <string name="similarity">Similarity</string>
+  <string name="clear">Clear</string>
+  <string name="image_library">Image Library</string>
+  <string name="similar_images">Similar Images</string>
+  <string name="search_source">Search Source</string>
+  <string name="set_as_source">Set as Search Source</string>
+  <string name="loading_images">Loading images...</string>
+  <string name="finding_similar">Finding similar images...</string>
+  <string name="no_images_found">No images found in folder</string>
+  <string name="select_folder_hint">Select a folder to browse images</string>
+  <string name="tap_and_hold_hint">Tap and hold to set as search source</string>
+  <string name="dino_model_failed">DINOv3 model initialization failed</string>
+  <string name="dino_model_loaded">DINOv3 model loaded successfully</string>
+  <string name="folder_scanning">Scanning folder...</string>
+  <string name="processing_images">Processing images...</string>
+  <string name="images_loaded">images loaded</string>
+  <string name="similarity_format">{0}%</string>
+  <string name="images_count_format">{0}</string>
+  <string name="processed_format">{0}/{1}</string>
+</resources>

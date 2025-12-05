@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- 7寸平板 (sw600dp) 的尺寸资源 -->
+  
+  <!-- 间距 -->
+  <dimen name="margin_small">6dp</dimen>
+  <dimen name="margin_medium">12dp</dimen>
+  <dimen name="margin_large">16dp</dimen>
+  <dimen name="margin_xlarge">24dp</dimen>
+  <dimen name="margin_xxlarge">32dp</dimen>
+  
+  <!-- 内边距 -->
+  <dimen name="padding_small">6dp</dimen>
+  <dimen name="padding_medium">12dp</dimen>
+  <dimen name="padding_large">16dp</dimen>
+  <dimen name="padding_xlarge">24dp</dimen>
+  <dimen name="padding_xxlarge">32dp</dimen>
+  
+  <!-- 图片网格项尺寸 (平板更大) -->
+  <dimen name="image_grid_item_width">120dp</dimen>
+  <dimen name="image_grid_item_height">150dp</dimen>
+  <dimen name="image_grid_thumbnail_height">105dp</dimen>
+  
+  <!-- 卡片尺寸 -->
+  <dimen name="card_corner_radius">10dp</dimen>
+  <dimen name="card_elevation">6dp</dimen>
+  
+  <!-- 按钮尺寸 -->
+  <dimen name="button_height">48dp</dimen>
+  <dimen name="button_min_width">88dp</dimen>
+  <dimen name="button_padding_horizontal">24dp</dimen>
+  
+  <!-- 文字大小 -->
+  <dimen name="text_size_small">12sp</dimen>
+  <dimen name="text_size_medium">14sp</dimen>
+  <dimen name="text_size_large">16sp</dimen>
+  <dimen name="text_size_xlarge">18sp</dimen>
+  <dimen name="text_size_xxlarge">24sp</dimen>
+  
+  <!-- 工具栏 -->
+  <dimen name="toolbar_height">64dp</dimen>
+  <dimen name="toolbar_padding">20dp</dimen>
+</resources>

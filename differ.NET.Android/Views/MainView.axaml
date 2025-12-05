@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:differ.NET.Android.ViewModels"
+             xmlns:models="clr-namespace:differ.NET.Models"
+             mc:Ignorable="d" 
+             d:DesignWidth="400" 
+             d:DesignHeight="700"
+             x:Class="differ.NET.Android.Views.MainView"
+             x:DataType="vm:MainViewModel">
+  
+  <Design.DataContext>
+    <vm:MainViewModel />
+  </Design.DataContext>
+
+  <!-- 移动端响应式布局 -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <!-- 顶部工具栏 -->
+    <Border Grid.Row="0" 
+            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="16,12">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- 第一行：主要操作按钮 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+          <Button Command="{Binding SelectFolderCommand}"
+                  Classes="accent"
+                  IsEnabled="{Binding !IsLoading}"
+                  Height="40">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Data="M19,20H4C2.89,20 2,19.1 2,18V6C2,4.89 2.89,4 4,4H10L12,6H19A2,2 0 0,1 21,8H21L4,8V18L6.14,10H23.21L20.93,18.5C20.7,19.37 19.92,20 19,20Z" 
+                       Width="16" Height="16"/>
+              <TextBlock Text="Folder" VerticalAlignment="Center" FontSize="12"/>
+            </StackPanel>
+          </Button>
+          
+          <CheckBox IsChecked="{Binding IncludeSubfolders}" 
+                    Content="Subfolders"
+                    VerticalAlignment="Center"
+                    FontSize="11"
+                    IsEnabled="{Binding !IsLoading}"/>
+        </StackPanel>
+        
+        <!-- 第二行：路径和相似度设置 -->
+        <StackPanel Grid.Row="1" Orientation="Vertical" Spacing="4" Margin="0,8,0,0">
+          <TextBlock Text="{Binding CurrentFolder}" 
+                     MaxWidth="350"
+                     TextTrimming="CharacterEllipsis"
+                     FontSize="10"
+                     Opacity="0.7"
+                     ToolTip.Tip="{Binding CurrentFolder}"/>
+          
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,4,0,0">
+            <TextBlock Grid.Column="0" Text="Similarity:" 
+                       VerticalAlignment="Center" FontSize="11"/>
+            <Slider Grid.Column="1" 
+                    Value="{Binding SimilarityThreshold}"
+                    Minimum="50" Maximum="100"
+                    Margin="8,0"
+                    VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="2" 
+                       Text="{Binding SimilarityThreshold, StringFormat={}{0:F0}%}" 
+                       VerticalAlignment="Center"
+                       Width="35" FontSize="11"/>
+            <Button Grid.Column="3" 
+                    Command="{Binding ClearSourceCommand}"
+                    IsVisible="{Binding SourceImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                    Padding="8,2"
+                    Margin="4,0,0,0">
+              <TextBlock Text="Clear" FontSize="10"/>
+            </Button>
+          </Grid>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- 主要内容区域 -->
+    <Grid Grid.Row="1" RowDefinitions="Auto,*">
+      <!-- 源图片显示 -->
+      <Border Grid.Row="0" 
+              Margin="12" 
+              Padding="12"
+              CornerRadius="8"
+              Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+              BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+              BorderThickness="2"
+              IsVisible="{Binding SourceImage, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Grid ColumnDefinitions="80,*">
+          <Border Grid.Column="0" Width="80" Height="80" 
+                  CornerRadius="6"
+                  ClipToBounds="True"
+                  Background="{DynamicResource LayerFillColorDefaultBrush}">
+            <Image Source="{Binding SourceImage.Thumbnail, FallbackValue={x:Null}}" 
+                   Stretch="Uniform"/>
+          </Border>
+          <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="2">
+            <TextBlock Text="Search Source" FontWeight="SemiBold" FontSize="13"/>
+            <TextBlock Text="{Binding SourceImage.FileName, FallbackValue=''}" 
+                       TextTrimming="CharacterEllipsis"
+                       FontSize="11"
+                       Opacity="0.7"/>
+            <TextBlock Text="{Binding SourceImage.FilePath, FallbackValue=''}" 
+                       TextTrimming="CharacterEllipsis"
+                       FontSize="9"
+                       Opacity="0.5"
+                       ToolTip.Tip="{Binding SourceImage.FilePath, FallbackValue={x:Null}}"/>
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- 图片列表 -->
+      <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Images}" Margin="8" Name="ImageGallery">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Horizontal"/>
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="models:ImageItem">
+              <Border Margin="4" 
+                      CornerRadius="8"
+                      Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                      BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                      BorderThickness="1"
+                      ClipToBounds="True"
+                      Width="100"
+                      Height="120">
+                <Grid RowDefinitions="80,Auto">
+                  <Border Grid.Row="0" 
+                          Background="{DynamicResource LayerFillColorDefaultBrush}"
+                          PointerPressed="OnImagePointerPressed"
+                          Tag="{Binding}">
+                    <Image Source="{Binding Thumbnail}"
+                           Stretch="Uniform"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center"/>
+                  </Border>
+                  <Border Grid.Row="1" Padding="6,4"
+                          Background="{DynamicResource LayerFillColorAltBrush}">
+                    <TextBlock Text="{Binding FileName}"
+                               TextTrimming="CharacterEllipsis"
+                               FontSize="9"
+                               Opacity="0.8"
+                               ToolTip.Tip="{Binding FileName}"/>
+                  </Border>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+
+      <!-- 加载状态 -->
+      <Border Grid.Row="1" 
+              IsVisible="{Binding IsLoading}"
+              Background="#80000000">
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+          <ProgressBar IsIndeterminate="True" Width="100"/>
+          <TextBlock Text="Loading images..." Foreground="White" FontSize="14"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- 底部状态栏 -->
+    <Border Grid.Row="2" 
+            Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="16,8">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Grid.Column="0" 
+                   Text="{Binding StatusText}" 
+                   VerticalAlignment="Center"
+                   FontSize="11"
+                   Opacity="0.8"
+                   TextWrapping="Wrap"/>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding ProcessedImages}" 
+                     Opacity="0.6" VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoading}"/>
+          <TextBlock Text="/" 
+                     Opacity="0.6" VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoading}"/>
+          <TextBlock Text="{Binding TotalImages}" 
+                     Opacity="0.6" VerticalAlignment="Center"
+                     IsVisible="{Binding IsLoading}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- 相似图片结果弹出层 -->
+    <Border Grid.RowSpan="3" 
+            IsVisible="{Binding SimilarImages.Count, Converter={x:Static ObjectConverters.IsNotNull}}"
+            Background="#F0000000"
+            PointerPressed="OnCloseSimilarImages">
+      <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+              Margin="16"
+              Padding="16"
+              CornerRadius="12"
+              Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+              BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+              BorderThickness="1"
+              MaxWidth="350"
+              MaxHeight="500">
+        <Grid RowDefinitions="Auto,*">
+          <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
+            <PathIcon Data="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z" 
+                     Width="18" Height="18"/>
+            <TextBlock Text="Similar Images" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="{Binding SimilarImages.Count, StringFormat=({0})}" 
+                       Opacity="0.6" VerticalAlignment="Center"/>
+          </StackPanel>
+          
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl ItemsSource="{Binding SimilarImages}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal"/>
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:ImageItem">
+                  <Border Margin="4" 
+                          CornerRadius="6"
+                          Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                          BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                          BorderThickness="1"
+                          ClipToBounds="True"
+                          Width="85"
+                          Height="100">
+                    <Grid RowDefinitions="65,Auto">
+                      <Border Grid.Row="0" 
+                              Background="{DynamicResource LayerFillColorDefaultBrush}">
+                        <Image Source="{Binding Thumbnail}"
+                               Stretch="Uniform"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Center"/>
+                      </Border>
+                      <Border Grid.Row="1" Padding="4,2"
+                              Background="{DynamicResource LayerFillColorAltBrush}">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Grid.Column="0"
+                                     Text="{Binding FileName}"
+                                     TextTrimming="CharacterEllipsis"
+                                     FontSize="8"
+                                     Opacity="0.8"
+                                     ToolTip.Tip="{Binding FileName}"/>
+                          <TextBlock Grid.Column="1" 
+                                     Text="{Binding Similarity, StringFormat={}{0:F0}%}"
+                                     FontSize="8"
+                                     FontWeight="SemiBold"
+                                     Foreground="{DynamicResource AccentFillColorDefaultBrush}"/>
+                        </Grid>
+                      </Border>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Border>
+
+    <!-- 搜索状态 -->
+    <Border Grid.RowSpan="3" 
+            IsVisible="{Binding IsSearching}"
+            Background="#80000000">
+      <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12">
+        <ProgressBar IsIndeterminate="True" Width="100"/>
+        <TextBlock Text="Finding similar images..." Foreground="White" FontSize="14"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

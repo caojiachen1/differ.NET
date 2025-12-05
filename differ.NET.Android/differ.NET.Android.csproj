@@ -1,10 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-android</TargetFramework>
-    <SupportedOSPlatformVersion>21</SupportedOSPlatformVersion>
+    <TargetFramework>net9.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <Nullable>enable</Nullable>
-    <ApplicationId>com.CompanyName.differ.NET</ApplicationId>
+    <ApplicationId>com.differnet.android</ApplicationId>
     <ApplicationVersion>1</ApplicationVersion>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <AndroidPackageFormat>apk</AndroidPackageFormat>
@@ -12,17 +12,23 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <AndroidResource Include="Icon.png">
-      <Link>Resources\drawable\Icon.png</Link>
-    </AndroidResource>
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Avalonia.Android" />
     <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\differ.NET\differ.NET.csproj" />
+    <Compile Include="..\differ.NET\Models\*.cs" Link="Models\%(Filename)%(Extension)" />
+    <Compile Include="..\differ.NET\Services\*.cs" Link="Services\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\differ.NET\differ.NET.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Exclude utility programs from compilation -->
+  <ItemGroup>
+    <Compile Remove="Program.cs" />
+    <Compile Remove="ValidationProgram.cs" />
   </ItemGroup>
 </Project>

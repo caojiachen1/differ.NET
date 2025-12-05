@@ -1,12 +1,60 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-  <style name="MyTheme">
+  <!-- 应用主题样式 -->
+  <style name="MyTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <!-- 主色调 -->
+    <item name="android:colorPrimary">#2196F3</item>
+    <item name="android:colorPrimaryDark">#1976D2</item>
+    <item name="android:colorAccent">#FF4081</item>
+    <!-- 背景色 -->
+    <item name="android:windowBackground">@color/window_background</item>
+    <!-- 文字颜色 -->
+    <item name="android:textColorPrimary">@color/text_primary</item>
+    <item name="android:textColorSecondary">@color/text_secondary</item>
   </style>
 
-  <style name="MyTheme.NoActionBar" parent="@style/Theme.AppCompat.DayNight.NoActionBar">
-    <item name="android:windowActionBar">false</item>
-    <item name="android:windowBackground">@drawable/splash_screen</item>
+  <!-- 无ActionBar的主题 -->
+  <style name="MyTheme.NoActionBar">
     <item name="android:windowNoTitle">true</item>
+    <item name="android:windowActionBar">false</item>
+    <item name="android:windowFullscreen">true</item>
+    <item name="android:windowContentOverlay">@null</item>
+  </style>
+
+  <!-- 启动画面样式 -->
+  <style name="MyTheme.Splash" parent="MyTheme.NoActionBar">
+    <item name="android:windowBackground">@drawable/splash_screen</item>
+  </style>
+
+  <!-- 卡片样式 -->
+  <style name="CardStyle">
+    <item name="android:layout_width">match_parent</item>
+    <item name="android:layout_height">wrap_content</item>
+    <item name="android:layout_margin">8dp</item>
+    <item name="android:padding">12dp</item>
+    <item name="android:background">@drawable/card_background</item>
+    <item name="android:elevation">4dp</item>
+    <item name="android:radius">8dp</item>
+  </style>
+
+  <!-- 按钮样式 -->
+  <style name="PrimaryButton">
+    <item name="android:layout_width">wrap_content</item>
+    <item name="android:layout_height">40dp</item>
+    <item name="android:background">@drawable/button_primary</item>
+    <item name="android:textColor">@color/white</item>
+    <item name="android:textSize">14sp</item>
+    <item name="android:paddingLeft">16dp</item>
+    <item name="android:paddingRight">16dp</item>
+    <item name="android:gravity">center</item>
+  </style>
+
+  <!-- 图片网格项样式 -->
+  <style name="ImageGridItem">
+    <item name="android:layout_width">90dp</item>
+    <item name="android:layout_height">110dp</item>
+    <item name="android:layout_margin">4dp</item>
+    <item name="android:background">@drawable/image_item_background</item>
+    <item name="android:elevation">2dp</item>
   </style>
 </resources>
