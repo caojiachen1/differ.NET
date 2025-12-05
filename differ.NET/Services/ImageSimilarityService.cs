@@ -1,48 +1,21 @@
 using System;
-using System.Numerics;
+using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace differ.NET.Services;
 
 /// <summary>
-/// 图片相似度计算服务
-/// 主要使用 DINOv3 深度学习模型，感知哈希算法(pHash)作为失败回退
+/// 图片相似度计算服务 - 仅使用DINOv3深度学习模型
 /// </summary>
 public class ImageSimilarityService : IDisposable
 {
-    private const int HashSize = 8;
-    private const int HighFreqFactor = 4;
-    private const int Size = HashSize * HighFreqFactor; // 32
-
-    // 预计算的余弦值表
-    private static readonly float[,] CosTable;
-    private static readonly float C1;
-    private static readonly float C2;
-
-    // DINOv3 特征提取器（单例）
+    // DINOv3 特征提取器（单例模式）
     private static readonly Lazy<DinoV3FeatureExtractor> _dinoExtractor = 
         new(() => new DinoV3FeatureExtractor(), isThreadSafe: true);
 
     private static bool _dinoInitialized;
     private static readonly object _initLock = new();
-
-    static ImageSimilarityService()
-    {
-        // 预计算余弦值，避免重复计算
-        CosTable = new float[Size, Size];
-        for (int i = 0; i < Size; i++)
-        {
-            for (int j = 0; j < Size; j++)
-            {
-                CosTable[i, j] = MathF.Cos((2 * i + 1) * j * MathF.PI / (2 * Size));
-            }
-        }
-        C1 = MathF.Sqrt(1.0f / Size);
-        C2 = MathF.Sqrt(2.0f / Size);
-    }
 
     /// <summary>
     /// 获取 DINOv3 提取器实例
@@ -56,16 +29,47 @@ public class ImageSimilarityService : IDisposable
     /// <returns>是否初始化成功</returns>
     public static bool InitializeDino(string? modelPath = null)
     {
+        Console.WriteLine($"[ImageSimilarity] InitializeDino called, _dinoInitialized={_dinoInitialized}, IsValueCreated={_dinoExtractor.IsValueCreated}");
+        
         if (_dinoInitialized)
-            return _dinoExtractor.Value.IsInitialized;
+        {
+            var result = _dinoExtractor.Value.IsInitialized;
+            Console.WriteLine($"[ImageSimilarity] Already initialized, returning: {result}");
+            return result;
+        }
 
         lock (_initLock)
         {
+            Console.WriteLine($"[ImageSimilarity] In lock, _dinoInitialized={_dinoInitialized}");
+            
             if (_dinoInitialized)
-                return _dinoExtractor.Value.IsInitialized;
+            {
+                var result = _dinoExtractor.Value.IsInitialized;
+                Console.WriteLine($"[ImageSimilarity] Already initialized (in lock), returning: {result}");
+                return result;
+            }
 
             _dinoInitialized = true;
-            return _dinoExtractor.Value.Initialize(modelPath);
+            Console.WriteLine($"[ImageSimilarity] Calling DinoExtractor.Initialize...");
+            var initResult = _dinoExtractor.Value.Initialize(modelPath);
+            Console.WriteLine($"[ImageSimilarity] DinoExtractor.Initialize returned: {initResult}");
+            
+            if (!initResult)
+            {
+                Console.WriteLine($"[ImageSimilarity] DINOv3 initialization failed!");
+                if (!string.IsNullOrEmpty(_dinoExtractor.Value.LastError))
+                {
+                    Console.WriteLine($"[ImageSimilarity] Last error: {_dinoExtractor.Value.LastError}");
+                }
+            }
+            else
+            {
+                var success = $"DINOv3 Successfully initialized";
+                Console.WriteLine($"[ImageSimilarity] {success}");
+                ErrorLogService.LogInfo(success);
+            }
+            
+            return initResult;
         }
     }
 
@@ -83,135 +87,90 @@ public class ImageSimilarityService : IDisposable
     {
         if (!IsDinoAvailable)
         {
+            var message = "DINOv3 not available, attempting initialization...";
+            Console.WriteLine($"[ImageSimilarity] {message}");
+            ErrorLogService.LogInfo(message);
             InitializeDino();
         }
 
         if (!IsDinoAvailable)
+        {
+            var error = "DINOv3 initialization failed, cannot extract features";
+            Console.WriteLine($"[ImageSimilarity] {error}");
+            ErrorLogService.LogError(error);
             return null;
+        }
 
-        return _dinoExtractor.Value.ExtractFeatures(imagePath);
+        try
+        {
+            Console.WriteLine($"[ImageSimilarity] Starting DINOv3 feature extraction for: {imagePath}");
+            var features = _dinoExtractor.Value.ExtractFeatures(imagePath);
+            
+            if (features == null)
+            {
+                var error = $"DINOv3 feature extraction failed for {imagePath}";
+                Console.WriteLine($"[ImageSimilarity] {error}");
+                ErrorLogService.LogError(error);
+                
+                if (!string.IsNullOrEmpty(_dinoExtractor.Value.LastError))
+                {
+                    Console.WriteLine($"[ImageSimilarity] DINOv3 detailed error: {_dinoExtractor.Value.LastError}");
+                    ErrorLogService.LogError($"DINOv3 detailed error: {_dinoExtractor.Value.LastError}");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"[ImageSimilarity] Successfully extracted {features.Length} DINOv3 features from {imagePath}");
+                Console.WriteLine($"[ImageSimilarity] Feature vector sample (first 5 values): {string.Join(", ", features.Take(5))}");
+                var info = $"Successfully extracted DINOv3 features from {imagePath}";
+                ErrorLogService.LogInfo(info);
+            }
+            
+            return features;
+        }
+        catch (Exception ex)
+        {
+            var error = $"DINOv3 feature extraction error for {imagePath}: {ex.Message}";
+            Console.WriteLine($"[ImageSimilarity] {error}");
+            ErrorLogService.LogError(error, ex);
+            return null;
+        }
     }
 
     /// <summary>
-    /// 计算两个图片的相似度 - 优先使用 DINOv3，失败时回退到 pHash
+    /// 计算两个图片的相似度 - 仅使用DINOv3特征
     /// </summary>
     /// <param name="features1">图片1的 DINO 特征</param>
     /// <param name="features2">图片2的 DINO 特征</param>
-    /// <param name="hash1">图片1的感知哈希（回退用）</param>
-    /// <param name="hash2">图片2的感知哈希（回退用）</param>
     /// <returns>相似度 (0-100)</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static double CalculateSimilarity(float[]? features1, float[]? features2, ulong hash1, ulong hash2)
+    public static double CalculateSimilarity(float[]? features1, float[]? features2)
     {
-        // 优先使用 DINOv3 特征
+        Console.WriteLine($"[ImageSimilarity] CalculateSimilarity called");
+        Console.WriteLine($"[ImageSimilarity] Features1: {(features1 != null ? $"Length {features1.Length}" : "null")}");
+        Console.WriteLine($"[ImageSimilarity] Features2: {(features2 != null ? $"Length {features2.Length}" : "null")}");
+        
+        // 只使用 DINOv3 特征进行计算
         if (features1 != null && features2 != null && features1.Length == features2.Length)
         {
-            return DinoV3FeatureExtractor.CalculateCosineSimilarity(features1, features2);
-        }
-
-        // 回退到 pHash
-        return CalculateSimilarity(hash1, hash2);
-    }
-
-    /// <summary>
-    /// 计算图片的感知哈希值（优化版）- 作为失败回退
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    public static ulong ComputePerceptualHash(string imagePath)
-    {
-        try
-        {
-            using var image = Image.Load<L8>(imagePath); // 直接加载为灰度图，更快
+            Console.WriteLine($"[ImageSimilarity] Both features valid, calculating cosine similarity");
+            Console.WriteLine($"[ImageSimilarity] Feature1 sample (first 5): {string.Join(", ", features1.Take(5))}");
+            Console.WriteLine($"[ImageSimilarity] Feature2 sample (first 5): {string.Join(", ", features2.Take(5))}");
             
-            // 1. 缩小图片到32x32
-            image.Mutate(x => x.Resize(Size, Size));
-
-            // 2. 获取像素亮度值
-            Span<float> pixels = stackalloc float[Size * Size];
-            for (int y = 0; y < Size; y++)
-            {
-                for (int x = 0; x < Size; x++)
-                {
-                    pixels[y * Size + x] = image[x, y].PackedValue;
-                }
-            }
-
-            // 3. 计算DCT（只计算左上角8x8）
-            Span<float> lowFreq = stackalloc float[HashSize * HashSize];
-            ComputeDCTOptimized(pixels, lowFreq);
-
-            // 4. 计算中值
-            Span<float> sorted = stackalloc float[HashSize * HashSize];
-            lowFreq.CopyTo(sorted);
-            sorted.Sort();
-            float median = sorted[sorted.Length / 2];
-
-            // 5. 生成哈希
-            ulong hash = 0;
-            for (int i = 0; i < 64; i++)
-            {
-                if (lowFreq[i] > median)
-                {
-                    hash |= (1UL << i);
-                }
-            }
-
-            return hash;
+            var similarity = DinoV3FeatureExtractor.CalculateCosineSimilarity(features1, features2);
+            
+            Console.WriteLine($"[ImageSimilarity] Raw cosine similarity: {similarity}");
+            var info = $"Using DINOv3 similarity: {similarity:F2}%";
+            Console.WriteLine($"[ImageSimilarity] {info}");
+            ErrorLogService.LogInfo(info);
+            return similarity;
         }
-        catch
-        {
-            return 0;
-        }
-    }
 
-    /// <summary>
-    /// 优化的DCT计算 - 只计算需要的8x8低频分量
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ComputeDCTOptimized(ReadOnlySpan<float> pixels, Span<float> result)
-    {
-        int idx = 0;
-        for (int u = 0; u < HashSize; u++)
-        {
-            float cu = u == 0 ? C1 : C2;
-            for (int v = 0; v < HashSize; v++)
-            {
-                float cv = v == 0 ? C1 : C2;
-                float sum = 0;
-                
-                for (int x = 0; x < Size; x++)
-                {
-                    float cosU = CosTable[x, u];
-                    int rowOffset = x * Size;
-                    for (int y = 0; y < Size; y++)
-                    {
-                        sum += pixels[rowOffset + y] * cosU * CosTable[y, v];
-                    }
-                }
-                
-                result[idx++] = cu * cv * sum;
-            }
-        }
-    }
-
-    /// <summary>
-    /// 计算两个哈希之间的汉明距离（使用SIMD优化）
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int HammingDistance(ulong hash1, ulong hash2)
-    {
-        return BitOperations.PopCount(hash1 ^ hash2);
-    }
-
-    /// <summary>
-    /// 计算两个图片的相似度(0-100%) - 基于 pHash
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static double CalculateSimilarity(ulong hash1, ulong hash2)
-    {
-        int distance = HammingDistance(hash1, hash2);
-        // 64位哈希，距离最大为64
-        return (1.0 - distance / 64.0) * 100;
+        // 如果DINOv3特征不可用，这是一个严重错误
+        var error = $"DINOv3 features not available for similarity calculation. Features1: {(features1 != null ? features1.Length : 0)}, Features2: {(features2 != null ? features2.Length : 0)}";
+        Console.WriteLine($"[ImageSimilarity] {error}");
+        ErrorLogService.LogError(error);
+        return 0;
     }
 
     public void Dispose()
