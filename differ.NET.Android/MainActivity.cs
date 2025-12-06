@@ -1,7 +1,9 @@
 using Android.App;
 using Android.Content.PM;
+using System;
 using Avalonia;
 using Avalonia.Android;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using differ.NET.Android.ViewModels;
 
@@ -29,8 +31,24 @@ public class MainActivity : AvaloniaMainActivity<App>
                     {
                         if (mainView.DataContext is MainViewModel viewModel)
                         {
-                            // Storage provider is handled differently on Android
-                            // viewModel.SetStorageProvider(StorageProvider);
+                            try
+                            {
+                                // 尝试通过 MainView 的 TopLevel 获取 StorageProvider 并设置给 ViewModel
+                                var top = TopLevel.GetTopLevel(mainView);
+                                if (top != null)
+                                {
+                                    viewModel.SetStorageProvider(top.StorageProvider);
+                                    Console.WriteLine("[MainActivity] StorageProvider set on MainViewModel via TopLevel");
+                                }
+                                else
+                                {
+                                    Console.WriteLine("[MainActivity] TopLevel for MainView is null; cannot set StorageProvider yet.");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[MainActivity] Failed to set StorageProvider: {ex.Message}");
+                            }
                         }
                     }
                 }

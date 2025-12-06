@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.VisualTree;
+using System;
 using differ.NET.Android.ViewModels;
 using differ.NET.Models;
 
@@ -10,6 +12,24 @@ public partial class MainView : UserControl
     public MainView()
     {
         InitializeComponent();
+    }
+
+    protected override void OnAttachedToVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        try
+        {
+            // 在关联到视觉树时确保ViewModel拿到StorageProvider（兼容Android）
+            if (TopLevel.GetTopLevel(this) is { } top && DataContext is MainViewModel vm)
+            {
+                vm.SetStorageProvider(top.StorageProvider);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MainView.Android] Failed to set StorageProvider on attach: {ex.Message}");
+        }
     }
 
     private async void OnImagePointerPressed(object? sender, PointerPressedEventArgs e)
