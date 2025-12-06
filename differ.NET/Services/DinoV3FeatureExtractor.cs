@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using SixLabors.ImageSharp;
@@ -31,7 +33,16 @@ public class DinoV3FeatureExtractor : IDisposable
     private static readonly float[] Mean = { 0.485f, 0.456f, 0.406f };
     private static readonly float[] Std = { 0.229f, 0.224f, 0.225f };
 
+    // 模型下载 URL
+    private const string ModelUrl = "https://modelscope.cn/models/onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX-MHA/resolve/master/onnx/model_q4.onnx";
+    private const string ModelDataUrl = "https://modelscope.cn/models/onnx-community/dinov3-vits16-pretrain-lvd1689m-ONNX-MHA/resolve/master/onnx/model_q4.onnx_data";
+
     private string? _modelPath;
+
+    /// <summary>
+    /// 模型下载进度事件
+    /// </summary>
+    public event Action<string, double>? DownloadProgressChanged;
 
     /// <summary>
     /// 获取模型是否已成功初始化
@@ -178,6 +189,145 @@ public class DinoV3FeatureExtractor : IDisposable
         }
 
         return possiblePaths[0]; // 返回默认路径用于错误消息
+    }
+
+    /// <summary>
+    /// 获取默认模型目录路径
+    /// </summary>
+    private static string GetDefaultModelDirectory()
+    {
+        return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Model");
+    }
+
+    /// <summary>
+    /// 异步初始化，如果模型不存在会自动下载
+    /// </summary>
+    /// <param name="modelPath">模型文件路径（可选）</param>
+    /// <returns>是否初始化成功</returns>
+    public async Task<bool> InitializeAsync(string? modelPath = null)
+    {
+        if (_isInitialized)
+            return true;
+
+        // 查找或下载模型
+        var foundPath = modelPath ?? FindModelPath();
+        
+        if (string.IsNullOrEmpty(foundPath) || !File.Exists(foundPath))
+        {
+            Console.WriteLine("[DinoV3] Model not found locally, attempting to download...");
+            
+            // 使用默认目录下载
+            var modelDir = GetDefaultModelDirectory();
+            var downloadedPath = await DownloadModelAsync(modelDir);
+            
+            if (string.IsNullOrEmpty(downloadedPath))
+            {
+                LastError = "Failed to download model files";
+                return false;
+            }
+            
+            foundPath = downloadedPath;
+        }
+
+        // 使用同步初始化方法
+        return Initialize(foundPath);
+    }
+
+    /// <summary>
+    /// 下载模型文件到指定目录
+    /// </summary>
+    /// <param name="targetDirectory">目标目录</param>
+    /// <returns>下载后的模型文件路径，失败返回null</returns>
+    public async Task<string?> DownloadModelAsync(string targetDirectory)
+    {
+        try
+        {
+            // 确保目录存在
+            Directory.CreateDirectory(targetDirectory);
+
+            var modelFilePath = Path.Combine(targetDirectory, "model_q4.onnx");
+            var modelDataFilePath = Path.Combine(targetDirectory, "model_q4.onnx_data");
+
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromMinutes(30); // 模型文件可能较大，设置较长超时
+
+            // 下载主模型文件
+            if (!File.Exists(modelFilePath))
+            {
+                Console.WriteLine($"[DinoV3] Downloading model file from {ModelUrl}...");
+                DownloadProgressChanged?.Invoke("model_q4.onnx", 0);
+                
+                await DownloadFileWithProgressAsync(httpClient, ModelUrl, modelFilePath, "model_q4.onnx");
+                
+                Console.WriteLine($"[DinoV3] Model file downloaded to: {modelFilePath}");
+            }
+            else
+            {
+                Console.WriteLine($"[DinoV3] Model file already exists: {modelFilePath}");
+            }
+
+            // 下载模型数据文件
+            if (!File.Exists(modelDataFilePath))
+            {
+                Console.WriteLine($"[DinoV3] Downloading model data file from {ModelDataUrl}...");
+                DownloadProgressChanged?.Invoke("model_q4.onnx_data", 0);
+                
+                await DownloadFileWithProgressAsync(httpClient, ModelDataUrl, modelDataFilePath, "model_q4.onnx_data");
+                
+                Console.WriteLine($"[DinoV3] Model data file downloaded to: {modelDataFilePath}");
+            }
+            else
+            {
+                Console.WriteLine($"[DinoV3] Model data file already exists: {modelDataFilePath}");
+            }
+
+            return modelFilePath;
+        }
+        catch (Exception ex)
+        {
+            var error = $"Failed to download model: {ex.Message}";
+            Console.WriteLine($"[DinoV3] {error}");
+            ErrorLogService.LogError(error, ex);
+            LastError = error;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 带进度报告的文件下载
+    /// </summary>
+    private async Task DownloadFileWithProgressAsync(HttpClient httpClient, string url, string filePath, string fileName)
+    {
+        using var response = await httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+        response.EnsureSuccessStatusCode();
+
+        var totalBytes = response.Content.Headers.ContentLength ?? -1L;
+        var downloadedBytes = 0L;
+
+        await using var contentStream = await response.Content.ReadAsStreamAsync();
+        await using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true);
+
+        var buffer = new byte[8192];
+        int bytesRead;
+        var lastProgressReport = DateTime.MinValue;
+
+        while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+        {
+            await fileStream.WriteAsync(buffer, 0, bytesRead);
+            downloadedBytes += bytesRead;
+
+            // 每500ms报告一次进度
+            if (totalBytes > 0 && (DateTime.Now - lastProgressReport).TotalMilliseconds >= 500)
+            {
+                var progress = (double)downloadedBytes / totalBytes * 100;
+                DownloadProgressChanged?.Invoke(fileName, progress);
+                Console.WriteLine($"[DinoV3] Downloading {fileName}: {progress:F1}% ({downloadedBytes / 1024 / 1024:F1} MB / {totalBytes / 1024 / 1024:F1} MB)");
+                lastProgressReport = DateTime.Now;
+            }
+        }
+
+        DownloadProgressChanged?.Invoke(fileName, 100);
+        Console.WriteLine($"[DinoV3] Download complete: {fileName}");
     }
 
     /// <summary>

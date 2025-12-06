@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace differ.NET.Services;
 
@@ -21,6 +22,62 @@ public class ImageSimilarityService : IDisposable
     /// 获取 DINOv3 提取器实例
     /// </summary>
     public static DinoV3FeatureExtractor DinoExtractor => _dinoExtractor.Value;
+
+    /// <summary>
+    /// 异步初始化 DINOv3 模型（如果模型不存在会自动下载）
+    /// </summary>
+    /// <param name="modelPath">可选的模型路径</param>
+    /// <param name="progressCallback">下载进度回调</param>
+    /// <returns>是否初始化成功</returns>
+    public static async Task<bool> InitializeDinoAsync(string? modelPath = null, Action<string, double>? progressCallback = null)
+    {
+        Console.WriteLine($"[ImageSimilarity] InitializeDinoAsync called, _dinoInitialized={_dinoInitialized}");
+        
+        if (_dinoInitialized && _dinoExtractor.Value.IsInitialized)
+        {
+            Console.WriteLine($"[ImageSimilarity] Already initialized, returning true");
+            return true;
+        }
+
+        // 订阅下载进度事件
+        if (progressCallback != null)
+        {
+            _dinoExtractor.Value.DownloadProgressChanged += progressCallback;
+        }
+
+        try
+        {
+            Console.WriteLine($"[ImageSimilarity] Calling DinoExtractor.InitializeAsync...");
+            var initResult = await _dinoExtractor.Value.InitializeAsync(modelPath);
+            Console.WriteLine($"[ImageSimilarity] DinoExtractor.InitializeAsync returned: {initResult}");
+            
+            if (initResult)
+            {
+                _dinoInitialized = true;
+                var success = "DINOv3 Successfully initialized (async)";
+                Console.WriteLine($"[ImageSimilarity] {success}");
+                ErrorLogService.LogInfo(success);
+            }
+            else
+            {
+                Console.WriteLine($"[ImageSimilarity] DINOv3 async initialization failed!");
+                if (!string.IsNullOrEmpty(_dinoExtractor.Value.LastError))
+                {
+                    Console.WriteLine($"[ImageSimilarity] Last error: {_dinoExtractor.Value.LastError}");
+                }
+            }
+            
+            return initResult;
+        }
+        finally
+        {
+            // 取消订阅
+            if (progressCallback != null)
+            {
+                _dinoExtractor.Value.DownloadProgressChanged -= progressCallback;
+            }
+        }
+    }
 
     /// <summary>
     /// 初始化 DINOv3 模型

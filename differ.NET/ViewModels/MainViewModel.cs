@@ -93,13 +93,23 @@ public partial class MainViewModel : ViewModelBase
 
         // 当数据库缓存启用且用户选择文件夹时初始化
 
-        // 异步初始化 DINOv3 模型
-        Task.Run(() =>
+        // 异步初始化 DINOv3 模型（如果模型不存在会自动下载）
+        Task.Run(async () =>
         {
             try
             {
                 Console.WriteLine($"[MainViewModel] Starting DINOv3 initialization...");
-                var success = ImageSimilarityService.InitializeDino();
+                
+                // 使用异步初始化，支持自动下载模型
+                var success = await ImageSimilarityService.InitializeDinoAsync(
+                    progressCallback: (fileName, progress) =>
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            StatusText = $"Downloading {fileName}: {progress:F1}%";
+                        });
+                    });
+                
                 Console.WriteLine($"[MainViewModel] DINOv3 initialization result: {success}");
                 Console.WriteLine($"[MainViewModel] IsDinoAvailable after init: {ImageSimilarityService.IsDinoAvailable}");
                 
