@@ -74,6 +74,9 @@ public partial class MainViewModel : ViewModelBase
     private string _cacheStatus = string.Empty;
 
     [ObservableProperty]
+    private string _compareCacheStatus = string.Empty;
+
+    [ObservableProperty]
     private bool _showErrorLog = false;
 
     [ObservableProperty]
@@ -85,6 +88,8 @@ public partial class MainViewModel : ViewModelBase
     private IStorageProvider? _storageProvider;
     private FolderDatabaseCacheService? _cacheService;
     private string _currentCacheFolder = string.Empty;
+    private FolderDatabaseCacheService? _compareCacheService;
+    private string _compareCacheFolder = string.Empty;
 
     public MainViewModel()
     {
@@ -406,7 +411,22 @@ public partial class MainViewModel : ViewModelBase
         if (folders.Count > 0)
         {
             var folder = folders[0];
-            CompareFolder = folder.Path.LocalPath;
+            var newCompareFolderPath = folder.Path.LocalPath;
+            
+            // 如果切换比较文件夹，需要重新初始化缓存
+            if (CompareFolder != newCompareFolderPath)
+            {
+                // 释放旧的比较缓存服务
+                if (_compareCacheService != null && _compareCacheFolder != newCompareFolderPath)
+                {
+                    _compareCacheService.Dispose();
+                    _compareCacheService = null;
+                    _compareCacheFolder = string.Empty;
+                }
+                
+                CompareFolder = newCompareFolderPath;
+            }
+            
             UseCompareFolder = true;
             await LoadCompareImagesAsync();
         }
@@ -420,6 +440,37 @@ public partial class MainViewModel : ViewModelBase
         IsLoading = true;
         StatusText = "Scanning compare folder...";
         CompareImages.Clear();
+
+        // 为比较文件夹初始化缓存服务
+        if (UseDatabaseCache && !string.IsNullOrEmpty(CompareFolder))
+        {
+            try
+            {
+                // 如果比较缓存服务已经创建但不是当前文件夹的，释放旧的
+                if (_compareCacheService != null && _compareCacheFolder != CompareFolder)
+                {
+                    _compareCacheService.Dispose();
+                    _compareCacheService = null;
+                }
+
+                // 为新的比较文件夹创建缓存服务
+                if (_compareCacheService == null)
+                {
+                    _compareCacheService = new FolderDatabaseCacheService(CompareFolder);
+                    _compareCacheFolder = CompareFolder;
+                    ErrorLogService.LogInfo($"Initialized compare folder cache for: {CompareFolder}");
+                }
+            }
+            catch (Exception ex)
+            {
+                var error = $"Failed to initialize compare folder cache for {CompareFolder}: {ex.Message}";
+                Console.WriteLine($"[MainViewModel] {error}");
+                ErrorLogService.LogError(error, ex);
+                // 注意：比较文件夹缓存失败不应该禁用主缓存，所以我们不设置 UseDatabaseCache = false
+                _compareCacheService?.Dispose();
+                _compareCacheService = null;
+            }
+        }
 
         // 检查DINOv3是否可用
         if (!ImageSimilarityService.IsDinoAvailable)
@@ -441,29 +492,69 @@ public partial class MainViewModel : ViewModelBase
             }
 
             var algorithmName = "DINOv3";
-            StatusText = $"Found {total} images. Processing with {algorithmName} using {Environment.ProcessorCount} cores...";
+            var cacheInfo = UseDatabaseCache && _compareCacheService != null ? " (with cache)" : "";
+            StatusText = $"Found {total} images. Processing with {algorithmName}{cacheInfo} using {Environment.ProcessorCount} cores...";
 
             // 使用并发处理来加速
             var processedItems = new ConcurrentBag<ImageItem>();
             var processedCount = 0;
+            var cacheHits = 0;
+            var cacheMisses = 0;
 
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 // 只使用DINOv3算法来提取特征，不再支持其他算法
                 foreach (var filePath in imageFiles)
                 {
                     try
                     {
-                        var imageItem = new ImageItem(filePath);
+                        ImageItem? imageItem = null;
                         
-                        // 获取 DINOv3 特征
-                        imageItem.DinoFeatures = ImageSimilarityService.ExtractDinoFeatures(filePath);
-                        
-                        // 如果DINOv3特征提取失败，需要一个适当的响应
-                        if (imageItem.DinoFeatures == null)
+                        // 尝试从缓存加载
+                        if (UseDatabaseCache && _compareCacheService != null)
                         {
-                            ErrorLogService.LogError($"DINOv3 feature extraction failed for {filePath}");
-                            continue; // 跳过该图片
+                            var cached = await _compareCacheService.GetCachedFeaturesAsync(filePath);
+                            if (cached != null)
+                            {
+                                Console.WriteLine($"[LoadCompareImages] Cache hit for: {filePath}");
+                                var dinoFeatures = cached.GetDinoFeatures();
+                                Console.WriteLine($"[LoadCompareImages] Loaded {dinoFeatures.Length} DINO features from compare cache");
+                                
+                                // 创建新的ImageItem并从缓存加载DINO特征
+                                imageItem = new ImageItem(filePath)
+                                {
+                                    DinoFeatures = dinoFeatures,
+                                    FileSize = cached.FileSize,
+                                    LastModified = DateTime.FromFileTimeUtc(cached.LastModified),
+                                    IsFromCache = true
+                                };
+                                Interlocked.Increment(ref cacheHits);
+                                Console.WriteLine($"[LoadCompareImages] Successfully created ImageItem from compare cache");
+                            }
+                        }
+                        
+                        // 如果未缓存，则进行提取
+                        if (imageItem == null)
+                        {
+                            imageItem = new ImageItem(filePath);
+                            
+                            // 获取 DINOv3 特征
+                            imageItem.DinoFeatures = ImageSimilarityService.ExtractDinoFeatures(filePath);
+                            
+                            // 如果DINOv3特征提取失败，需要一个适当的响应
+                            if (imageItem.DinoFeatures == null)
+                            {
+                                ErrorLogService.LogError($"DINOv3 feature extraction failed for {filePath}");
+                                continue; // 跳过该图片
+                            }
+                            
+                            Interlocked.Increment(ref cacheMisses);
+                            
+                            // 缓存特征
+                            if (UseDatabaseCache && _compareCacheService != null)
+                            {
+                                await _compareCacheService.CacheFeaturesAsync(filePath, imageItem.DinoFeatures);
+                            }
                         }
                         
                         processedItems.Add(imageItem);
@@ -473,7 +564,8 @@ public partial class MainViewModel : ViewModelBase
                         {
                             Dispatcher.UIThread.Post(() =>
                             {
-                                StatusText = $"Extracting DINOv3 features: {count}/{total} images";
+                                var cacheStatus = cacheHits + cacheMisses > 0 ? $" (Cache: {cacheHits} hits, {cacheMisses} misses)" : "";
+                                StatusText = $"Extracting DINOv3 features: {count}/{total} images{cacheStatus}";
                             });
                         }
                     }
@@ -515,6 +607,9 @@ public partial class MainViewModel : ViewModelBase
             await Task.WhenAll(thumbnailTasks);
 
             StatusText = $"Compare folder loaded with {CompareImages.Count} images.";
+            
+            // 更新比较文件夹缓存状态
+            await UpdateCompareCacheStatusAsync();
         }
         catch (Exception ex)
         {
@@ -533,6 +628,16 @@ public partial class MainViewModel : ViewModelBase
         UseCompareFolder = false;
         CompareImages.Clear();
         SimilarImages.Clear();
+        
+        // 释放比较文件夹缓存服务
+        if (_compareCacheService != null)
+        {
+            _compareCacheService.Dispose();
+            _compareCacheService = null;
+            _compareCacheFolder = string.Empty;
+            ErrorLogService.LogInfo("Cleared compare folder cache");
+        }
+        
         StatusText = Images.Count > 0 
             ? $"Loaded {Images.Count} images. Right-click to set as search source."
             : "Select a folder to browse images";
@@ -673,6 +778,29 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 更新比较文件夹缓存状态信息
+    /// </summary>
+    private async Task UpdateCompareCacheStatusAsync()
+    {
+        if (_compareCacheService == null)
+        {
+            CompareCacheStatus = "Compare cache disabled";
+            return;
+        }
+
+        try
+        {
+            var stats = await _compareCacheService.GetCacheStatisticsAsync();
+            var cacheFile = Path.GetFileName(_compareCacheService.DatabasePath);
+            CompareCacheStatus = $"Compare DINOv3 Cache: {stats.TotalEntries} entries - {cacheFile}";
+        }
+        catch (Exception ex)
+        {
+            CompareCacheStatus = $"Compare cache error: {ex.Message}";
+        }
+    }
+
+    /// <summary>
     /// 清理过期缓存
     /// </summary>
     [RelayCommand]
@@ -728,6 +856,35 @@ public partial class MainViewModel : ViewModelBase
             _currentCacheFolder = string.Empty;
             CacheStatus = "Cache disabled";
             ErrorLogService.LogInfo("Disabled folder cache");
+        }
+
+        // 同时处理比较文件夹缓存
+        if (value && _compareCacheService == null && !string.IsNullOrEmpty(CompareFolder))
+        {
+            try
+            {
+                _compareCacheService = new FolderDatabaseCacheService(CompareFolder);
+                _compareCacheFolder = CompareFolder;
+                _ = UpdateCompareCacheStatusAsync();
+                ErrorLogService.LogInfo($"Enabled compare folder cache for: {CompareFolder}");
+            }
+            catch (Exception ex)
+            {
+                var error = $"Failed to initialize compare folder cache: {ex.Message}";
+                Console.WriteLine($"[MainViewModel] {error}");
+                ErrorLogService.LogError(error, ex);
+                // 比较文件夹缓存失败不应该禁用主缓存
+                _compareCacheService?.Dispose();
+                _compareCacheService = null;
+            }
+        }
+        else if (!value && _compareCacheService != null)
+        {
+            _compareCacheService.Dispose();
+            _compareCacheService = null;
+            _compareCacheFolder = string.Empty;
+            CompareCacheStatus = "Compare cache disabled";
+            ErrorLogService.LogInfo("Disabled compare folder cache");
         }
     }
 
@@ -828,5 +985,6 @@ public partial class MainViewModel : ViewModelBase
     {
         ErrorLogService.OnErrorLogged -= OnErrorLogged;
         _cacheService?.Dispose();
+        _compareCacheService?.Dispose();
     }
 }

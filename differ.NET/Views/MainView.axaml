@@ -359,6 +359,12 @@
           <TextBlock Text="{Binding TotalImages, StringFormat=Total: {0}}" 
                      Opacity="0.6" VerticalAlignment="Center"
                      IsVisible="{Binding IsLoading}"/>
+          <TextBlock Text="{Binding CacheStatus}" 
+                     Opacity="0.6" VerticalAlignment="Center"
+                     IsVisible="{Binding UseDatabaseCache}"/>
+          <TextBlock Text="{Binding CompareCacheStatus}" 
+                     Opacity="0.6" VerticalAlignment="Center"
+                     IsVisible="{Binding UseCompareFolder}"/>
         </StackPanel>
       </Grid>
     </Border>
