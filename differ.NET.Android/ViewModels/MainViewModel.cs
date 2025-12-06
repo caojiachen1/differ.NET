@@ -143,9 +143,19 @@ public partial class MainViewModel : ViewModelBase
         if (folders.Count > 0)
         {
             var folder = folders[0];
-            CurrentFolder = folder.Path.LocalPath;
+            CurrentFolder = GetPlatformFolderPath(folder);
             await LoadImagesFromFolderAsync(CurrentFolder);
         }
+    }
+
+    private static string GetPlatformFolderPath(IStorageFolder folder)
+    {
+#if ANDROID || __ANDROID__
+        // 在安卓上使用完整的 content:// URI，避免 LocalPath 变成 /tree/primary: 导致无法解析
+        return folder.Path.ToString();
+#else
+        return folder.Path.LocalPath;
+#endif
     }
 
     private async Task LoadImagesFromFolderAsync(string folderPath)
