@@ -25,6 +25,15 @@ public partial class MainView : UserControl
         if (TopLevel.GetTopLevel(this) is { } topLevel && DataContext is MainViewModel vm)
         {
             vm.SetStorageProvider(topLevel.StorageProvider);
+            vm.UpdateGridLayout(ImageScrollViewer.Bounds.Width);
+        }
+    }
+
+    private void OnImageAreaSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+        {
+            vm.UpdateGridLayout(e.NewSize.Width);
         }
     }
 

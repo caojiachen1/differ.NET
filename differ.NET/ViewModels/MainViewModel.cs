@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -21,6 +23,9 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     private ObservableCollection<ImageItem> _images = new();
+
+    [ObservableProperty]
+    private ObservableCollection<ImageRow> _imageRows = new();
 
     [ObservableProperty]
     private ObservableCollection<ImageItem> _similarImages = new();
@@ -90,6 +95,12 @@ public partial class MainViewModel : ViewModelBase
     private string _currentCacheFolder = string.Empty;
     private FolderDatabaseCacheService? _compareCacheService;
     private string _compareCacheFolder = string.Empty;
+    private ObservableCollection<ImageItem>? _currentImagesCollection;
+
+    private CancellationTokenSource? _rowRebuildCts;
+    private readonly TimeSpan _rowRebuildDelay = TimeSpan.FromMilliseconds(100);
+    private int _columnCount = 1;
+    private const double ImageCellWidth = 170d; // Approximate width of one cell including padding/margin
 
     public MainViewModel()
     {
@@ -151,7 +162,37 @@ public partial class MainViewModel : ViewModelBase
         });
 
         // 加载现有的错误日志
+        AttachImagesCollection(Images);
         LoadErrorLogs();
+    }
+
+    partial void OnImagesChanged(ObservableCollection<ImageItem> value)
+    {
+        AttachImagesCollection(value);
+        InvalidateRows();
+    }
+
+    private void AttachImagesCollection(ObservableCollection<ImageItem> collection)
+    {
+        if (_currentImagesCollection == collection)
+            return;
+
+        if (_currentImagesCollection != null)
+        {
+            _currentImagesCollection.CollectionChanged -= OnImagesCollectionChanged;
+        }
+
+        _currentImagesCollection = collection;
+
+        if (_currentImagesCollection != null)
+        {
+            _currentImagesCollection.CollectionChanged += OnImagesCollectionChanged;
+        }
+    }
+
+    private void OnImagesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        InvalidateRows();
     }
 
     public void SetStorageProvider(IStorageProvider provider)
@@ -981,10 +1022,88 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    public void UpdateGridLayout(double availableWidth)
+    {
+        if (double.IsNaN(availableWidth) || double.IsInfinity(availableWidth))
+            return;
+
+        var effectiveWidth = Math.Max(0, availableWidth - 16); // account for padding/margins
+
+        var columns = Math.Max(1, (int)Math.Floor(effectiveWidth / ImageCellWidth));
+        if (columns != _columnCount)
+        {
+            _columnCount = columns;
+            InvalidateRows();
+        }
+        else if (ImageRows.Count == 0 && Images.Count > 0)
+        {
+            InvalidateRows();
+        }
+    }
+
+    private void InvalidateRows()
+    {
+        _rowRebuildCts?.Cancel();
+
+        var cts = new CancellationTokenSource();
+        _rowRebuildCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(_rowRebuildDelay, cts.Token);
+                if (cts.IsCancellationRequested)
+                    return;
+
+                await Dispatcher.UIThread.InvokeAsync(RebuildImageRows);
+            }
+            catch (TaskCanceledException)
+            {
+                // ignored
+            }
+        });
+    }
+
+    private void RebuildImageRows()
+    {
+        var columns = Math.Max(1, _columnCount);
+
+        if (Images.Count == 0)
+        {
+            if (ImageRows.Count > 0)
+            {
+                ImageRows = new ObservableCollection<ImageRow>();
+            }
+            return;
+        }
+
+        var total = Images.Count;
+        var rows = new List<ImageRow>((total + columns - 1) / columns);
+        for (var start = 0; start < total; start += columns)
+        {
+            var rowIndex = start / columns;
+            var slice = new List<ImageItem>(Math.Min(columns, total - start));
+            for (var i = 0; i < columns && start + i < total; i++)
+            {
+                slice.Add(Images[start + i]);
+            }
+            rows.Add(new ImageRow(rowIndex, slice));
+        }
+
+        ImageRows = new ObservableCollection<ImageRow>(rows);
+    }
+
     public void Dispose()
     {
         ErrorLogService.OnErrorLogged -= OnErrorLogged;
         _cacheService?.Dispose();
         _compareCacheService?.Dispose();
+        _rowRebuildCts?.Cancel();
+
+        if (_currentImagesCollection != null)
+        {
+            _currentImagesCollection.CollectionChanged -= OnImagesCollectionChanged;
+        }
     }
 }
