@@ -38,4 +38,10 @@ public partial class MainView : UserControl
             viewModel.ClearSourceCommand.Execute(null);
         }
     }
+
+    private void OnPopupContentPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // 阻止事件冒泡，避免点击弹窗内容时关闭弹窗
+        e.Handled = true;
+    }
 }
