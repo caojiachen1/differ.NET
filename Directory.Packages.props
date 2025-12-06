@@ -31,5 +31,7 @@
     <PackageVersion Include="Xamarin.AndroidX.RecyclerView" Version="1.3.2.11" />
     <PackageVersion Include="Xamarin.AndroidX.AppCompat" Version="1.7.0.3" />
     <PackageVersion Include="Xamarin.AndroidX.CardView" Version="1.0.0.29" />
+    <!-- Windows SDK Build Tools required by the installer project -->
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.1742" />
   </ItemGroup>
 </Project>
