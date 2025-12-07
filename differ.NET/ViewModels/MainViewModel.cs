@@ -73,6 +73,12 @@ public partial class MainViewModel : ViewModelBase
     private bool _isDinoAvailable;
 
     [ObservableProperty]
+    private string _searchQuery = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasSearchQuery;
+
+    [ObservableProperty]
     private bool _useDatabaseCache = true;
 
     [ObservableProperty]
@@ -1069,7 +1075,12 @@ public partial class MainViewModel : ViewModelBase
     {
         var columns = Math.Max(1, _columnCount);
 
-        if (Images.Count == 0)
+        // 根据搜索词（SearchQuery）决定显示的数据源
+        var sourceList = string.IsNullOrWhiteSpace(SearchQuery)
+            ? Images.ToList()
+            : Images.Where(i => !string.IsNullOrEmpty(i.FileName) && i.FileName.IndexOf(SearchQuery, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+
+        if (sourceList.Count == 0)
         {
             if (ImageRows.Count > 0)
             {
@@ -1078,7 +1089,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var total = Images.Count;
+        var total = sourceList.Count;
         var rows = new List<ImageRow>((total + columns - 1) / columns);
         for (var start = 0; start < total; start += columns)
         {
@@ -1086,12 +1097,25 @@ public partial class MainViewModel : ViewModelBase
             var slice = new List<ImageItem>(Math.Min(columns, total - start));
             for (var i = 0; i < columns && start + i < total; i++)
             {
-                slice.Add(Images[start + i]);
+                slice.Add(sourceList[start + i]);
             }
             rows.Add(new ImageRow(rowIndex, slice));
         }
 
         ImageRows = new ObservableCollection<ImageRow>(rows);
+    }
+
+    partial void OnSearchQueryChanged(string value)
+    {
+        // 更新 HasSearchQuery 并重新构建行（节流/防抖可在未来添加）
+        HasSearchQuery = !string.IsNullOrWhiteSpace(value);
+        InvalidateRows();
+    }
+
+    [RelayCommand]
+    private void ClearSearch()
+    {
+        SearchQuery = string.Empty;
     }
 
     public void Dispose()

@@ -69,12 +69,36 @@
       <Grid Grid.Column="0" RowDefinitions="Auto,*">
         <Border Grid.Row="0" Padding="16,12" 
                 Background="{DynamicResource LayerFillColorDefaultBrush}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <PathIcon Data="M22,16V4A2,2 0 0,0 20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16M11,12L13.03,14.71L16,11L20,16H8M2,6V20A2,2 0 0,0 4,22H18V20H4V6" Width="18" Height="18"/>
-            <TextBlock Text="Image Library" FontSize="16" FontWeight="SemiBold"/>
-            <TextBlock Text="{Binding Images.Count, StringFormat=({0})}" 
-                       Opacity="0.6" VerticalAlignment="Center"/>
-          </StackPanel>
+          <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+              <PathIcon Data="M22,16V4A2,2 0 0,0 20,2H8A2,2 0 0,0 6,4V16A2,2 0 0,0 8,18H20A2,2 0 0,0 22,16M11,12L13.03,14.71L16,11L20,16H8M2,6V20A2,2 0 0,0 4,22H18V20H4V6" Width="18" Height="18"/>
+              <TextBlock Text="Image Library" FontSize="16" FontWeight="SemiBold"/>
+              <TextBlock Text="{Binding Images.Count, StringFormat=({0})}" 
+                         Opacity="0.6" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- 搜索框：位于标题右侧，占据较大宽度（设计宽度下约为半页） -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+              <TextBox x:Name="SearchBox" Width="600"
+                       HorizontalAlignment="Left"
+                       Text="{Binding SearchQuery, Mode=TwoWay}"
+                       Margin="8,0"
+                       />
+
+              <!-- 清空按钮：仅在有搜索词时可见 -->
+              <Button Command="{Binding ClearSearchCommand}"
+                      IsVisible="{Binding HasSearchQuery}"
+                      Margin="0,0"
+                      VerticalAlignment="Center">
+                <PathIcon Data="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" Width="14" Height="14"/>
+              </Button>
+            </StackPanel>
+
+            <!-- 占位：右侧可放其它控件（保留为空） -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="8">
+              <!-- reserved -->
+            </StackPanel>
+          </Grid>
         </Border>
 
         <ScrollViewer Grid.Row="1"
