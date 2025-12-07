@@ -93,4 +93,23 @@ public partial class MainView : UserControl
             }
         }
     }
+
+    private void OnImageDoubleTapped(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control ctrl && ctrl.Tag is ImageItem imageItem)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = imageItem.FilePath,
+                    UseShellExecute = true
+                });
+            }
+            catch
+            {
+                // Ignore errors opening the file
+            }
+        }
+    }
 }

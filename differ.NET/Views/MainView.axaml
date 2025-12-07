@@ -94,7 +94,7 @@
                   </ItemsRepeater.Layout>
                   <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="models:ImageItem">
-                      <Border Margin="4"
+                            <Border Margin="4"
                               Width="170"
                               CornerRadius="8"
                               Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -103,7 +103,9 @@
                               ClipToBounds="True"
                               Cursor="Hand"
                               Tag="{Binding}"
-                              PointerPressed="OnImagePointerPressed">
+                              ToolTip.Tip="{Binding FilePath}"
+                              PointerPressed="OnImagePointerPressed"
+                              DoubleTapped="OnImageDoubleTapped">
                         <Border.ContextFlyout>
                           <MenuFlyout>
                             <MenuItem Header="Set as Search Source" 
@@ -278,14 +280,16 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="models:ImageItem">
                 <Border Margin="4" 
-                        CornerRadius="8"
+                  CornerRadius="8"
                         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         ClipToBounds="True"
                         Cursor="Hand"
-                        Tag="{Binding}"
-                        PointerPressed="OnImagePointerPressed">
+                  Tag="{Binding}"
+                  ToolTip.Tip="{Binding FilePath}"
+                  PointerPressed="OnImagePointerPressed"
+                  DoubleTapped="OnImageDoubleTapped">
                   <Border.ContextFlyout>
                     <MenuFlyout>
                       <MenuItem Header="Set as Search Source" 

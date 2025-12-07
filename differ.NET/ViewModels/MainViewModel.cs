@@ -46,7 +46,7 @@ public partial class MainViewModel : ViewModelBase
     private string _statusText = "Select a folder to browse images";
 
     [ObservableProperty]
-    private double _similarityThreshold = 70;
+    private double _similarityThreshold = 90;
 
     [ObservableProperty]
     private bool _includeSubfolders = true;
