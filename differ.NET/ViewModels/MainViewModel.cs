@@ -24,8 +24,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     private ObservableCollection<ImageItem> _images = new();
 
-    [ObservableProperty]
-    private ObservableCollection<ImageRow> _imageRows = new();
+    private readonly ObservableCollection<ImageItem> _filteredImages = new();
+
+    public ReadOnlyObservableCollection<ImageItem> FilteredImages { get; }
 
     [ObservableProperty]
     private ObservableCollection<ImageItem> _similarImages = new();
@@ -103,15 +104,12 @@ public partial class MainViewModel : ViewModelBase
     private string _compareCacheFolder = string.Empty;
     private ObservableCollection<ImageItem>? _currentImagesCollection;
 
-    private CancellationTokenSource? _rowRebuildCts;
-    private readonly TimeSpan _rowRebuildDelay = TimeSpan.FromMilliseconds(100);
-    private int _columnCount = 1;
-    private const double ImageCellWidth = 170d; // Approximate width of one cell including padding/margin
-
     public MainViewModel()
     {
         // 监听错误日志事件
         ErrorLogService.OnErrorLogged += OnErrorLogged;
+
+        FilteredImages = new ReadOnlyObservableCollection<ImageItem>(_filteredImages);
 
         // 当数据库缓存启用且用户选择文件夹时初始化
 
@@ -169,13 +167,14 @@ public partial class MainViewModel : ViewModelBase
 
         // 加载现有的错误日志
         AttachImagesCollection(Images);
+        RebuildFilteredImages();
         LoadErrorLogs();
     }
 
     partial void OnImagesChanged(ObservableCollection<ImageItem> value)
     {
         AttachImagesCollection(value);
-        InvalidateRows();
+        RebuildFilteredImages();
     }
 
     private void AttachImagesCollection(ObservableCollection<ImageItem> collection)
@@ -198,7 +197,43 @@ public partial class MainViewModel : ViewModelBase
 
     private void OnImagesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        InvalidateRows();
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+                if (e.NewItems != null)
+                {
+                    var insertIndex = e.NewStartingIndex >= 0 ? e.NewStartingIndex : _filteredImages.Count;
+                    foreach (ImageItem item in e.NewItems.Cast<ImageItem>())
+                    {
+                        if (!MatchesSearch(item))
+                            continue;
+
+                        insertIndex = Math.Clamp(insertIndex, 0, _filteredImages.Count);
+                        _filteredImages.Insert(insertIndex, item);
+                        insertIndex++;
+                    }
+                }
+                break;
+
+            case NotifyCollectionChangedAction.Remove:
+                if (e.OldItems != null)
+                {
+                    foreach (ImageItem item in e.OldItems.Cast<ImageItem>())
+                    {
+                        _filteredImages.Remove(item);
+                    }
+                }
+                break;
+
+            case NotifyCollectionChangedAction.Move:
+            case NotifyCollectionChangedAction.Replace:
+                RebuildFilteredImages();
+                break;
+
+            case NotifyCollectionChangedAction.Reset:
+                _filteredImages.Clear();
+                break;
+        }
     }
 
     public void SetStorageProvider(IStorageProvider provider)
@@ -1028,88 +1063,35 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    public void UpdateGridLayout(double availableWidth)
+    private void RebuildFilteredImages()
     {
-        if (double.IsNaN(availableWidth) || double.IsInfinity(availableWidth))
+        _filteredImages.Clear();
+
+        if (Images.Count == 0)
             return;
 
-        var effectiveWidth = Math.Max(0, availableWidth - 16); // account for padding/margins
-
-        var columns = Math.Max(1, (int)Math.Floor(effectiveWidth / ImageCellWidth));
-        if (columns != _columnCount)
+        foreach (var item in Images)
         {
-            _columnCount = columns;
-            InvalidateRows();
-        }
-        else if (ImageRows.Count == 0 && Images.Count > 0)
-        {
-            InvalidateRows();
+            if (MatchesSearch(item))
+            {
+                _filteredImages.Add(item);
+            }
         }
     }
 
-    private void InvalidateRows()
+    private bool MatchesSearch(ImageItem item)
     {
-        _rowRebuildCts?.Cancel();
+        if (string.IsNullOrWhiteSpace(SearchQuery))
+            return true;
 
-        var cts = new CancellationTokenSource();
-        _rowRebuildCts = cts;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(_rowRebuildDelay, cts.Token);
-                if (cts.IsCancellationRequested)
-                    return;
-
-                await Dispatcher.UIThread.InvokeAsync(RebuildImageRows);
-            }
-            catch (TaskCanceledException)
-            {
-                // ignored
-            }
-        });
-    }
-
-    private void RebuildImageRows()
-    {
-        var columns = Math.Max(1, _columnCount);
-
-        // 根据搜索词（SearchQuery）决定显示的数据源
-        var sourceList = string.IsNullOrWhiteSpace(SearchQuery)
-            ? Images.ToList()
-            : Images.Where(i => !string.IsNullOrEmpty(i.FileName) && i.FileName.IndexOf(SearchQuery, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-
-        if (sourceList.Count == 0)
-        {
-            if (ImageRows.Count > 0)
-            {
-                ImageRows = new ObservableCollection<ImageRow>();
-            }
-            return;
-        }
-
-        var total = sourceList.Count;
-        var rows = new List<ImageRow>((total + columns - 1) / columns);
-        for (var start = 0; start < total; start += columns)
-        {
-            var rowIndex = start / columns;
-            var slice = new List<ImageItem>(Math.Min(columns, total - start));
-            for (var i = 0; i < columns && start + i < total; i++)
-            {
-                slice.Add(sourceList[start + i]);
-            }
-            rows.Add(new ImageRow(rowIndex, slice));
-        }
-
-        ImageRows = new ObservableCollection<ImageRow>(rows);
+        return !string.IsNullOrEmpty(item.FileName) &&
+               item.FileName.IndexOf(SearchQuery, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     partial void OnSearchQueryChanged(string value)
     {
-        // 更新 HasSearchQuery 并重新构建行（节流/防抖可在未来添加）
         HasSearchQuery = !string.IsNullOrWhiteSpace(value);
-        InvalidateRows();
+        RebuildFilteredImages();
     }
 
     [RelayCommand]
@@ -1123,7 +1105,6 @@ public partial class MainViewModel : ViewModelBase
         ErrorLogService.OnErrorLogged -= OnErrorLogged;
         _cacheService?.Dispose();
         _compareCacheService?.Dispose();
-        _rowRebuildCts?.Cancel();
 
         if (_currentImagesCollection != null)
         {
