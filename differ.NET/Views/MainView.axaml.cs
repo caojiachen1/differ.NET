@@ -50,6 +50,22 @@ public partial class MainView : UserControl
         }
     }
 
+    private async void OnImageElementPrepared(object? sender, ItemsRepeaterElementPreparedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && e.Element?.DataContext is ImageItem item)
+        {
+            await vm.EnsureThumbnailAsync(item, 150);
+        }
+    }
+
+    private void OnImageElementClearing(object? sender, ItemsRepeaterElementClearingEventArgs e)
+    {
+        if (DataContext is MainViewModel vm && e.Element?.DataContext is ImageItem item)
+        {
+            vm.CancelThumbnailLoad(item);
+        }
+    }
+
     private void OnSetAsSourceClick(object? sender, RoutedEventArgs e)
     {
         if (sender is MenuItem menuItem && menuItem.Tag is ImageItem imageItem)

@@ -102,10 +102,13 @@
         </Border>
 
         <ScrollViewer Grid.Row="1"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-          <ItemsRepeater ItemsSource="{Binding FilteredImages}"
-                          Margin="8">
+                HorizontalScrollBarVisibility="Disabled"
+                VerticalScrollBarVisibility="Auto">
+          <ItemsRepeater x:Name="ImageRepeater"
+              ItemsSource="{Binding FilteredImages}"
+              Margin="8"
+              ElementPrepared="OnImageElementPrepared"
+              ElementClearing="OnImageElementClearing">
             <ItemsRepeater.Layout>
               <UniformGridLayout MinItemWidth="178"
                                  MinRowSpacing="8"
@@ -287,7 +290,11 @@
         </Border>
 
         <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
-          <ItemsRepeater ItemsSource="{Binding SimilarImages}" Margin="8">
+          <ItemsRepeater x:Name="SimilarRepeater"
+                          ItemsSource="{Binding SimilarImages}"
+                          Margin="8"
+                          ElementPrepared="OnImageElementPrepared"
+                          ElementClearing="OnImageElementClearing">
             <ItemsRepeater.Layout>
               <UniformGridLayout MinItemWidth="178"
                                  MinRowSpacing="8"

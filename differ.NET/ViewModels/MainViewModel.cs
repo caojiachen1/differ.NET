@@ -103,6 +103,8 @@ public partial class MainViewModel : ViewModelBase
     private FolderDatabaseCacheService? _compareCacheService;
     private string _compareCacheFolder = string.Empty;
     private ObservableCollection<ImageItem>? _currentImagesCollection;
+    private readonly ConcurrentDictionary<ImageItem, CancellationTokenSource> _thumbnailLoadTokens = new();
+    private readonly SemaphoreSlim _thumbnailSemaphore = new(Environment.ProcessorCount * 2);
 
     public MainViewModel()
     {
@@ -280,6 +282,7 @@ public partial class MainViewModel : ViewModelBase
     {
         IsLoading = true;
         StatusText = "Scanning folder...";
+        CancelAllThumbnailLoads();
         Images.Clear();
         SimilarImages.Clear();
         SourceImage = null;
@@ -433,39 +436,18 @@ public partial class MainViewModel : ViewModelBase
             // 按文件名排序并添加到列表
             var sortedItems = processedItems.OrderBy(x => x.FileName).ToList();
             
-            StatusText = "Loading thumbnails...";
-            ProcessedImages = 0;
-
-            // 并行加载缩略图，使用信号量控制并发
-            var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
-            var thumbnailTasks = sortedItems.Select(async item =>
+            // 直接添加条目，缩略图按需虚拟化加载
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                await semaphore.WaitAsync();
-                try
+                foreach (var item in sortedItems)
                 {
-                    item.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(item.FilePath, 150);
-                    
-                    await Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        Images.Add(item);
-                        ProcessedImages = Images.Count;
-                        if (Images.Count % 20 == 0 || Images.Count == sortedItems.Count)
-                        {
-                            StatusText = $"Loading thumbnails: {Images.Count}/{sortedItems.Count}";
-                        }
-                    });
+                    Images.Add(item);
                 }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }).ToArray();
-
-            await Task.WhenAll(thumbnailTasks);
+                ProcessedImages = Images.Count;
+            });
 
             StatusText = $"Loaded {Images.Count} images. Right-click to set as search source.";
-            
-            // 更新缓存状态
+
             await UpdateCacheStatusAsync();
         }
         catch (Exception ex)
@@ -521,6 +503,7 @@ public partial class MainViewModel : ViewModelBase
 
         IsLoading = true;
         StatusText = "Scanning compare folder...";
+        CancelAllThumbnailLoads();
         CompareImages.Clear();
 
         // 为比较文件夹初始化缓存服务
@@ -661,36 +644,16 @@ public partial class MainViewModel : ViewModelBase
             // 按文件名排序并添加到列表
             var sortedItems = processedItems.OrderBy(x => x.FileName).ToList();
             
-            StatusText = "Loading thumbnails...";
-
-            // 并行加载缩略图
-            var semaphore = new SemaphoreSlim(Environment.ProcessorCount * 2);
-            var thumbnailTasks = sortedItems.Select(async item =>
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                await semaphore.WaitAsync();
-                try
+                foreach (var item in sortedItems)
                 {
-                    item.Thumbnail = await ImageLoaderService.LoadThumbnailAsync(item.FilePath, 150);
-                    await Dispatcher.UIThread.InvokeAsync(() =>
-                    {
-                        CompareImages.Add(item);
-                        if (CompareImages.Count % 20 == 0 || CompareImages.Count == sortedItems.Count)
-                        {
-                            StatusText = $"Loading thumbnails: {CompareImages.Count}/{sortedItems.Count}";
-                        }
-                    });
+                    CompareImages.Add(item);
                 }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }).ToArray();
-
-            await Task.WhenAll(thumbnailTasks);
+            });
 
             StatusText = $"Compare folder loaded with {CompareImages.Count} images.";
-            
-            // 更新比较文件夹缓存状态
+
             await UpdateCompareCacheStatusAsync();
         }
         catch (Exception ex)
@@ -709,6 +672,7 @@ public partial class MainViewModel : ViewModelBase
         CompareFolder = string.Empty;
         UseCompareFolder = false;
         CompareImages.Clear();
+        CancelAllThumbnailLoads();
         SimilarImages.Clear();
         
         // 释放比较文件夹缓存服务
@@ -1100,11 +1064,88 @@ public partial class MainViewModel : ViewModelBase
         SearchQuery = string.Empty;
     }
 
+    /// <summary>
+    /// 确保按需加载缩略图，结合虚拟化容器准备事件调用
+    /// </summary>
+    public async Task EnsureThumbnailAsync(ImageItem item, int size = 150)
+    {
+        if (item.Thumbnail != null)
+            return;
+
+        // 防止重复加载
+        if (_thumbnailLoadTokens.TryGetValue(item, out var existingCts))
+        {
+            if (!existingCts.IsCancellationRequested)
+                return;
+
+            _thumbnailLoadTokens.TryRemove(item, out _);
+        }
+
+        var cts = new CancellationTokenSource();
+        if (!_thumbnailLoadTokens.TryAdd(item, cts))
+        {
+            cts.Dispose();
+            return;
+        }
+
+        try
+        {
+            await _thumbnailSemaphore.WaitAsync(cts.Token);
+
+            var bitmap = await ImageLoaderService.LoadThumbnailAsync(item.FilePath, size);
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!cts.IsCancellationRequested)
+                {
+                    item.Thumbnail = bitmap;
+                }
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        catch (Exception ex)
+        {
+            ErrorLogService.LogError($"Failed to load thumbnail for {item.FileName}: {ex.Message}", ex);
+        }
+        finally
+        {
+            _thumbnailLoadTokens.TryRemove(item, out _);
+            _thumbnailSemaphore.Release();
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 取消指定条目的缩略图加载
+    /// </summary>
+    public void CancelThumbnailLoad(ImageItem item)
+    {
+        if (_thumbnailLoadTokens.TryRemove(item, out var cts))
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+    }
+
+    private void CancelAllThumbnailLoads()
+    {
+        foreach (var kvp in _thumbnailLoadTokens.ToArray())
+        {
+            kvp.Value.Cancel();
+            kvp.Value.Dispose();
+            _thumbnailLoadTokens.TryRemove(kvp.Key, out _);
+        }
+    }
+
     public void Dispose()
     {
         ErrorLogService.OnErrorLogged -= OnErrorLogged;
         _cacheService?.Dispose();
         _compareCacheService?.Dispose();
+        CancelAllThumbnailLoads();
 
         if (_currentImagesCollection != null)
         {
