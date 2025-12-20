@@ -102,8 +102,10 @@
         </Border>
 
         <ScrollViewer Grid.Row="1"
-                HorizontalScrollBarVisibility="Disabled"
-                VerticalScrollBarVisibility="Auto">
+          x:Name="LibraryScrollViewer"
+          ScrollChanged="OnScrollChanged"
+          HorizontalScrollBarVisibility="Disabled"
+          VerticalScrollBarVisibility="Auto">
           <ItemsRepeater x:Name="ImageRepeater"
               ItemsSource="{Binding FilteredImages}"
               Margin="8"
@@ -289,7 +291,10 @@
           </StackPanel>
         </Border>
 
-        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
+        <ScrollViewer Grid.Row="3"
+                x:Name="SimilarScrollViewer"
+                ScrollChanged="OnScrollChanged"
+                HorizontalScrollBarVisibility="Disabled">
           <ItemsRepeater x:Name="SimilarRepeater"
                           ItemsSource="{Binding SimilarImages}"
                           Margin="8"
